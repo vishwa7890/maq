@@ -9,7 +9,6 @@ import logging
 from typing import Dict, List, Tuple, Any, Optional
 from pathlib import Path
 import pdfplumber
-import fitz  # PyMuPDF
 from fuzzywuzzy import fuzz, process
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity

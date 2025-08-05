@@ -20,7 +20,6 @@ markdown==3.5.2
 SQLAlchemy>=2.0.0
 # PDF processing dependencies
 pdfplumber==0.10.3
-PyMuPDF==1.23.26
 fuzzywuzzy==0.18.0
 python-Levenshtein==0.23.0
 scikit-learn==1.4.0
