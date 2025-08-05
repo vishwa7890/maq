@@ -1,9 +1,10 @@
 """
-Script to initialize the embeddings and sample data for testing.
+Script to initialize the FAISS index and sample data for testing.
 """
 import os
 import json
 import numpy as np
+import faiss
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
@@ -33,9 +34,9 @@ SAMPLE_QUOTES = [
     "UI/UX design breakdown: Research phase (1-2 weeks, $5,000-$10,000), Wireframing (2-3 weeks, $8,000-$15,000), UI Design (3-4 weeks, $12,000-$25,000), Prototyping (1-2 weeks, $5,000-$10,000), Testing (1 week, $3,000-$8,000)."
 ]
 
-def initialize_embeddings():
-    """Initialize and save embeddings with sample quotes."""
-    print("Initializing embeddings with sample data...")
+def initialize_faiss_index():
+    """Initialize and save a FAISS index with sample quotes."""
+    print("Initializing FAISS index with sample data...")
     
     # Initialize the sentence transformer model
     model = SentenceTransformer(MODEL_NAME)
@@ -44,12 +45,17 @@ def initialize_embeddings():
     print("Generating embeddings...")
     embeddings = model.encode(SAMPLE_QUOTES, show_progress_bar=True)
     
-    # Save the embeddings and mapping
-    embeddings_file = EMBEDDING_DIR / "embeddings.npy"
+    # Create and save the FAISS index
+    dimension = embeddings.shape[1]
+    index = faiss.IndexFlatIP(dimension)  # Inner product (cosine similarity)
+    index.add(embeddings.astype('float32'))
+    
+    # Save the index and mapping
+    index_file = EMBEDDING_DIR / "quote_index.faiss"
     mapping_file = QUOTES_DIR / "index_map.json"
     
-    np.save(str(embeddings_file), embeddings)
-    print(f"Saved embeddings to {embeddings_file}")
+    faiss.write_index(index, str(index_file))
+    print(f"Saved FAISS index to {index_file}")
     
     # Save the mapping of index to quote text
     mapping = {str(i): quote for i, quote in enumerate(SAMPLE_QUOTES)}
@@ -67,7 +73,7 @@ def initialize_embeddings():
 
 if __name__ == "__main__":
     print("Initializing sample data for Business Knowledge Chat...")
-    initialize_embeddings()
+    initialize_faiss_index()
     print("\nSetup complete! You can now run the application with:")
     print("uvicorn app.main:app --reload --port 8000")
     print("\nAccess the chat interface at: http://localhost:8000")
