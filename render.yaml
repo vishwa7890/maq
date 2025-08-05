@@ -1,0 +1,114 @@
+# Render.com configuration file
+# Reference: https://render.com/docs/deploy-fastapi
+
+# Global settings
+defaults:
+  env: python
+  python:
+    pythonVersion: "3.10.0"
+  envVars:
+    - key: PYTHONUNBUFFERED
+      value: "1"
+    - key: PYTHONPATH
+      value: "/opt/render/project/src"
+    - key: PYTHON_VERSION
+      value: "3.10.0"
+    - key: ENVIRONMENT
+      value: "production"
+    - key: DATABASE_URL
+      fromDatabase:
+        name: questimate-db
+        property: connectionString
+    - key: SECRET_KEY
+      generateValue: true
+    - key: ALGORITHM
+      value: "HS256"
+    - key: ACCESS_TOKEN_EXPIRE_MINUTES
+      value: "30"
+    - key: OPENROUTER_API_KEY
+      sync: false  # Set this in the Render dashboard
+    - key: OPENROUTER_API_URL
+      value: "https://openrouter.ai/api/v1/chat/completions"
+    - key: MODEL_NAME
+      value: "mistralai/mistral-7b-instruct:free"
+    - key: MAX_PROMPT_LENGTH
+      value: "8000"
+    - key: CHAT_HISTORY_LIMIT
+      value: "20"
+    - key: MAX_RECENT_ESTIMATES
+      value: "10"
+
+# Database service
+services:
+  - type: web
+    name: questimate-api
+    env: python
+    buildCommand: |
+      pip install -r requirements.txt
+      python -m database.database create_tables
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4
+    envVars:
+      - key: PORT
+        value: 10000
+    build:
+      buildpacks:
+        - heroku/python
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
+    healthCheckTimeout: 30
+
+# Database configuration
+databases:
+  - name: questimate-db
+    databaseName: questimate
+    user: questimate_user
+    plan: free  # For production, consider using a paid plan
+
+# Build configuration
+builds:
+  - env: python
+    buildCommand: |
+      pip install -r requirements.txt
+      python -m database.database create_tables
+
+# Environment-specific settings
+environments:
+  - name: production
+    buildCommand: |
+      pip install -r requirements.txt --no-cache-dir
+      python -m database.database create_tables
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONPATH
+        value: "/opt/render/project/src"
+
+# Health check configuration
+healthChecks:
+  - name: api-health
+    path: /api/health
+    timeoutSeconds: 30
+    intervalSeconds: 60
+    initialDelaySeconds: 10
+    threshold: 3
+    successThreshold: 1
+    failureThreshold: 3
+
+# Required for OpenRouter API access
+crons: []  # No cron jobs by default
+
+# Cache configuration (optional)
+caches:
+  - name: questimate-cache
+    type: redis
+    plan: free
+
+# Disk configuration (if needed)
+disks:
+  - name: questimate-data
+    mountPath: /data
+    sizeGB: 1
+    plan: free
