@@ -5,14 +5,14 @@
 defaults:
   env: python
   python:
-    pythonVersion: "3.10.18"
+    pythonVersion: "3.10.8"
   envVars:
     - key: PYTHONUNBUFFERED
       value: "1"
     - key: PYTHONPATH
       value: "/opt/render/project/src"
     - key: PYTHON_VERSION
-      value: "3.10.18"
+      value: "3.10.8"
     - key: ENVIRONMENT
       value: "production"
     - key: DATABASE_URL
@@ -44,6 +44,8 @@ services:
     name: questimate-api
     env: python
     buildCommand: |
+      python --version
+      pip install --upgrade pip
       pip install -r requirements.txt
       python -m database.database create_tables
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4
