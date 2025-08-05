@@ -5,14 +5,14 @@
 defaults:
   env: python
   python:
-    pythonVersion: "3.10.6"
+    pythonVersion: "3.10.18"
   envVars:
     - key: PYTHONUNBUFFERED
       value: "1"
     - key: PYTHONPATH
       value: "/opt/render/project/src"
     - key: PYTHON_VERSION
-      value: "3.10.6"
+      value: "3.10.18"
     - key: ENVIRONMENT
       value: "production"
     - key: DATABASE_URL
