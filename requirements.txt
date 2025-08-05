@@ -5,20 +5,18 @@ sentence-transformers==2.6.1
 pydantic==2.7.1
 python-dotenv==1.0.1
 numpy==1.26.4
-torch>=2.5.0
-torchvision==0.17.0
-torchaudio==2.2.0
+torch==2.2.2
+torchvision==0.17.2
+torchaudio==2.2.2
 transformers==4.38.2
 networkx==3.2.1
 python-multipart>=0.0.7
 requests==2.31.0
 httpx==0.27.0
-# Removed mistralai package since we're using OpenRouter directly
 pydantic-settings==2.2.1
 tqdm==4.66.1
 markdown==3.5.2
 SQLAlchemy>=2.0.0
-# PDF processing dependencies
 pdfplumber==0.10.3
 PyMuPDF==1.23.26
 fuzzywuzzy==0.18.0
