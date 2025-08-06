@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database configuration from environment variables
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/questimate")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create SQLAlchemy engine and session factory
 engine = create_async_engine(DATABASE_URL, echo=True)

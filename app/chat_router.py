@@ -52,8 +52,8 @@ load_dotenv(Path(__file__).parent.parent / '.env')
 
 # Configuration from environment variables
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
-MODEL_NAME = os.getenv("MODEL_NAME", "mistralai/mistral-7b-instruct:free")
+OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL")
+MODEL_NAME = os.getenv("MODEL_NAME")
 MAX_PROMPT_LENGTH = 4000
 
 # Configure logging
