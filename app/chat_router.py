@@ -51,8 +51,8 @@ import os
 load_dotenv(Path(__file__).parent.parent / '.env')
 
 # Configuration from environment variables
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL")
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
+TOGETHER_API_URL = os.getenv("TOGETHER_API_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
 MAX_PROMPT_LENGTH = 4000
 
@@ -397,52 +397,49 @@ def format_chat_history(messages: List[Dict[str, str]]) -> str:
     return "\n".join(formatted) if formatted else "No history"
 
 async def _call_llm(prompt: str) -> str:
-    """Call Mistral 7B via OpenRouter API with optimized RAG/KG prompting."""
+    """Call the model via TOGETHERAI API with optimized RAG/KG prompting."""
     try:
         if len(prompt) > MAX_PROMPT_LENGTH:
             prompt = prompt[-MAX_PROMPT_LENGTH:]
             
-        logger.info(f"Sending optimized prompt to OpenRouter (length: {len(prompt)} chars)")
+        logger.info(f"Sending prompt to TOGETHERAI (length: {len(prompt)} chars)")
         
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "HTTP-Referer": "https://github.com/your-repo",
-            "X-Title": "QuoteMaster AI"
+            "Authorization": f"Bearer {TOGETHER_API_KEY}",
+            "Content-Type": "application/json"
         }
         
-        # Enhanced system message for better RAG/KG utilization
+        # TOGETHERAI expects messages in the chat format
         messages = [
-            {
-                "role": "system", 
-                "content": SYSTEM_PROMPT
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ]
         
         payload = {
             "model": MODEL_NAME,
             "messages": messages,
-            "temperature": 0.3,  
-            "max_tokens": 500,  
-            "top_p": 0.9
+            "temperature": 0.3,
+            "max_tokens": 2000,
+            "top_p": 0.9,
+            "stop": ["</s>"]
         }
         
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    OPENROUTER_API_URL,
+                    TOGETHER_API_URL,
                     headers=headers,
                     json=payload,
-                    timeout=60.0
+                    timeout=120.0  # Increased timeout for larger models
                 )
                 response.raise_for_status()
                 data = response.json()
                 
                 if not data.get("choices"):
-                    raise HTTPException(status_code=500, detail="Empty response from OpenRouter")
+                    raise HTTPException(status_code=500, detail="Empty response from TOGETHERAI")
                     
-                logger.info(f"Received optimized response (length: {len(data['choices'][0]['message']['content'])} chars)")
                 response_text = data["choices"][0]["message"]["content"]
+                logger.info(f"Received response (length: {len(response_text)} chars)")
                 
                 # Ensure we always return valid markdown
                 response_text = response_text or "No content generated"
@@ -458,41 +455,21 @@ async def _call_llm(prompt: str) -> str:
                     response_text = "⚠️ No response was generated. Please try again."
                     logger.warning(f"Empty response generated for query: {prompt}")
                 
-                # Add fallback markdown formatting if empty
-                response_text = response_text or "**Empty Response**\nPlease try again with more details."
-                
                 return response_text
                 
             except httpx.ConnectTimeout:
-                logger.error("OpenRouter API connection timed out")
+                logger.error("TOGETHERAI API connection timed out")
                 return "I apologize, but I'm currently unable to connect to the AI service. Please try again later."
-            except httpx.NetworkError as e:
-                logger.error(f"OpenRouter API network error: {str(e)}")
-                return "I apologize, but I'm currently experiencing network issues. Please try again later."
+            except httpx.HTTPStatusError as e:
+                logger.error(f"TOGETHERAI API error: {e.response.text}")
+                return f"I apologize, but there was an error with the AI service: {e.response.status_code}"
             except Exception as e:
-                logger.error(f"OpenRouter API error: {str(e)}")
-                raise HTTPException(status_code=500, detail="An error occurred while processing your request")
-                
-                response_text = f"**Response**:\n{response_text}"
-            
-            # Fix table formatting if needed
-            response_text = fix_table_formatting(response_text)
-            
-            # Ensure we always return a valid string response
-            response_text = str(response_text or "").strip()
-            if not response_text:
-                response_text = "⚠️ No response was generated. Please try again."
-                logger.warning(f"Empty response generated for query: {prompt}")
-            
-            # Add fallback markdown formatting if empty
-            response_text = response_text or "**Empty Response**\nPlease try again with more details."
-            
-            return response_text
-            
+                logger.error(f"TOGETHERAI API error: {str(e)}", exc_info=True)
+                return "I apologize, but an unexpected error occurred while processing your request."
+        
     except Exception as e:
-        error_msg = f"OpenRouter API error: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        raise HTTPException(status_code=500, detail=error_msg)
+        logger.error(f"Error in _call_llm: {str(e)}", exc_info=True)
+        return f"I apologize, but an error occurred while processing your request: {str(e)}"
 
 @router.post("/sessions/", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_chat_session(
