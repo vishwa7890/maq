@@ -51,8 +51,8 @@ import os
 load_dotenv(Path(__file__).parent.parent / '.env')
 
 # Configuration from environment variables
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-TOGETHER_API_URL = os.getenv("TOGETHER_API_URL")
+API_KEY = os.getenv("API_KEY")
+API_URL = os.getenv("API_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
 MAX_PROMPT_LENGTH = 4000
 
@@ -397,19 +397,19 @@ def format_chat_history(messages: List[Dict[str, str]]) -> str:
     return "\n".join(formatted) if formatted else "No history"
 
 async def _call_llm(prompt: str) -> str:
-    """Call the model via TOGETHERAI API with optimized RAG/KG prompting."""
+    """Call the model via AI API with optimized RAG/KG prompting."""
     try:
         if len(prompt) > MAX_PROMPT_LENGTH:
             prompt = prompt[-MAX_PROMPT_LENGTH:]
             
-        logger.info(f"Sending prompt to TOGETHERAI (length: {len(prompt)} chars)")
+        logger.info(f"Sending prompt to AI (length: {len(prompt)} chars)")
         
         headers = {
-            "Authorization": f"Bearer {TOGETHER_API_KEY}",
+            "Authorization": f"Bearer {_API_KEY}",
             "Content-Type": "application/json"
         }
         
-        # TOGETHERAI expects messages in the chat format
+        # AI expects messages in the chat format
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
@@ -427,7 +427,7 @@ async def _call_llm(prompt: str) -> str:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    TOGETHER_API_URL,
+                    _API_URL,
                     headers=headers,
                     json=payload,
                     timeout=120.0  # Increased timeout for larger models
@@ -436,7 +436,7 @@ async def _call_llm(prompt: str) -> str:
                 data = response.json()
                 
                 if not data.get("choices"):
-                    raise HTTPException(status_code=500, detail="Empty response from TOGETHERAI")
+                    raise HTTPException(status_code=500, detail="Empty response from AI")
                     
                 response_text = data["choices"][0]["message"]["content"]
                 logger.info(f"Received response (length: {len(response_text)} chars)")
@@ -458,13 +458,13 @@ async def _call_llm(prompt: str) -> str:
                 return response_text
                 
             except httpx.ConnectTimeout:
-                logger.error("TOGETHERAI API connection timed out")
+                logger.error("AI API connection timed out")
                 return "I apologize, but I'm currently unable to connect to the AI service. Please try again later."
             except httpx.HTTPStatusError as e:
-                logger.error(f"TOGETHERAI API error: {e.response.text}")
+                logger.error(f"AI API error: {e.response.text}")
                 return f"I apologize, but there was an error with the AI service: {e.response.status_code}"
             except Exception as e:
-                logger.error(f"TOGETHERAI API error: {str(e)}", exc_info=True)
+                logger.error(f"AI API error: {str(e)}", exc_info=True)
                 return "I apologize, but an unexpected error occurred while processing your request."
         
     except Exception as e:
