@@ -88,33 +88,11 @@
                 left: -300px;
                 top: 0;
                 bottom: 0;
-                z-index: 1000;
-                transition: transform 0.3s ease-in-out;
-                width: 85%;
-                max-width: 300px;
-                height: 100%;
-                overflow-y: auto;
-                -webkit-overflow-scrolling: touch;
-                box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+                z-index: 100;
+                transition: transform 0.3s ease;
             }
             .sidebar.active {
-                transform: translateX(100%);
-            }
-            .overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.5);
-                z-index: 999;
-                opacity: 0;
-                transition: opacity 0.3s ease-in-out;
-            }
-            .overlay.active {
-                display: block;
-                opacity: 1;
+                transform: translateX(300px);
             }
         }
 
@@ -137,7 +115,7 @@
         }
 
         .chat-item {
-            padding: 14px 16px;
+            padding: 10px 15px;
             border-radius: 8px;
             margin-bottom: 8px;
             cursor: pointer;
@@ -149,17 +127,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            color: #000000 !important;
-            -webkit-tap-highlight-color: transparent;
-            min-height: 48px;
-            box-sizing: border-box;
-        }
-        
-        @media (max-width: 768px) {
-            .chat-item {
-                padding: 16px 20px;
-                margin-bottom: 6px;
-            }
+            color: #000000 !important; /* Forced black color for chat items */
         }
 
         .chat-item:hover {
@@ -230,13 +198,6 @@
             border-top: 1px solid var(--border);
             position: relative;
             box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.02);
-            padding-bottom: max(env(safe-area-inset-bottom), 1rem);
-        }
-        
-        @supports (padding-bottom: env(safe-area-inset-bottom)) {
-            .chat-input {
-                padding-bottom: calc(1rem + env(safe-area-inset-bottom));
-            }
         }
         
         .chat-input::before {
@@ -262,15 +223,6 @@
             padding: 0.5rem 0.75rem;
             transition: all 0.2s ease;
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            max-width: 100%;
-            margin: 0 auto;
-        }
-        
-        @media (max-width: 768px) {
-            .input-container {
-                border-radius: 1.25rem;
-                padding: 0.5rem 1rem;
-            }
         }
         
         .input-container:focus-within {
@@ -335,19 +287,10 @@
             color: var(--text-secondary);
             cursor: pointer;
             transition: all 0.2s ease;
-            width: 44px;
-            height: 44px;
+            width: 36px;
+            height: 36px;
             position: relative;
             flex-shrink: 0;
-            -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation;
-        }
-        
-        @media (min-width: 769px) {
-            .btn {
-                width: 36px;
-                height: 36px;
-            }
         }
         
         .btn i {
@@ -948,24 +891,76 @@
             background-color: #F44336;
         }
         
+        .feedback-buttons {
+            display: inline-flex;
+            gap: 4px;
+            margin-right: 10px;
+            border-right: 1px solid #e5e7eb;
+            padding-right: 10px;
+        }
+        
+        .feedback-btn {
+            background: none;
+            border: 1px solid #e5e7eb;
+            color: #9ca3af;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .feedback-btn:hover {
+            background: #f9fafb;
+        }
+        
+        .feedback-btn.like-btn:hover {
+            color: #10b981;
+            border-color: #10b981;
+        }
+        
+        .feedback-btn.dislike-btn:hover {
+            color: #ef4444;
+            border-color: #ef4444;
+        }
+        
+        .feedback-btn.active {
+            color: white;
+        }
+        
+        .feedback-btn.like-btn.active {
+            background-color: #10b981;
+            border-color: #10b981;
+        }
+        
+        .feedback-btn.dislike-btn.active {
+            background-color: #ef4444;
+            border-color: #ef4444;
+        }
+        
+        .action-btn {
+            background: none;
+            border: none;
+            color: #6b7280;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-right: 10px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
         .mobile-menu-btn {
             background: var(--primary);
             border: none;
             color: white;
             font-size: 1.2rem;
-            width: 44px;
-            height: 44px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            position: fixed;
-            bottom: 1.5rem;
-            left: 1rem;
-            z-index: 900;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation;
             cursor: pointer;
             padding: 0.6rem 0.9rem;
             border-radius: 8px;
@@ -1039,7 +1034,6 @@
             animation: fadeIn 0.3s ease-in;
             position: relative;
             max-width: 85%;
-            margin-right: auto; /* Ensure messages stay on the left by default */
         }
         
         @media (max-width: 768px) {
@@ -1053,17 +1047,18 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Style for user messages - on the left */
+        /* Style for user messages - on the right */
         .message.user {
+            margin-left: auto;
+            margin-right: 0;
+            justify-content: flex-end;
+        }
+        
+        /* Style for assistant messages - on the left */
+        .message.assistant {
             margin-right: auto;
             margin-left: 0;
             justify-content: flex-start;
-        }
-        
-        /* Style for assistant messages - on the right */
-        .message.assistant {
-            margin-left: auto;
-            justify-content: flex-end;
         }
         
 
@@ -1138,16 +1133,63 @@
         /* Markdown styling */
         .message-content {
             font-size: 1rem;
-            line-height: 1.6;
+            line-height: 1.7;
             letter-spacing: 0.01em;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             text-rendering: optimizeLegibility;
             color: #1a1a2e;
             word-wrap: break-word;
+            padding: 12px 16px;
+            margin: 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .message-content p {
+            margin: 0 0 1.1em 0;
+            line-height: 1.7;
+        }
+        
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+        
+        .message-content ul, .message-content ol {
+            margin: 0.75em 0 1.25em 1.5em;
+            padding: 0;
+        }
+        
+        .message-content li {
+            margin-bottom: 0.6em;
+            padding-left: 0.4em;
+            line-height: 1.6;
+        }
+        
+        .message-content ul {
+            list-style-type: disc;
+        }
+        
+        .message-content ol {
+            list-style-type: decimal;
+        }
+        
+        .message-content li::marker {
+            color: var(--primary);
+            font-size: 0.9em;
+        }
+        
+        .message-content strong {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        .message-content em {
+            color: #4a5568;
+            font-style: italic;
         }
 
-        .message-content h1, .message-content h2, .message-content h3 {
+        .message-content h1, .message-content h2, .message-content h3, .message-content h4 {
             margin: 1.5em 0 0.75em 0;
             color: var(--text);
             font-weight: 600;
@@ -1157,6 +1199,11 @@
         .message-content h1 { font-size: 1.5rem; }
         .message-content h2 { font-size: 1.3rem; }
         .message-content h3 { font-size: 1.1rem; }
+        .message-content h4 { 
+            font-size: 1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
 
         .message-content table {
             width: 100%;
@@ -1420,10 +1467,8 @@
         @media (max-width: 768px) {
             .chat-container {
                 width: 100%;
-                height: 100%;
-                min-height: -webkit-fill-available;
+                height: 100vh;
                 border-radius: 0;
-                padding-bottom: 0;
                 margin: 0;
                 position: relative;
                 z-index: 1;
@@ -1996,6 +2041,13 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}-message`;
             
+            // Use provided message ID or generate a new one
+            const messageId = metadata.message_id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            messageDiv.dataset.messageId = messageId;
+            
+            // Store the message content for feedback
+            messageDiv.dataset.messageContent = typeof content === 'string' ? content : '';
+            
             // Create message content container
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -2032,6 +2084,14 @@
                 actionsDiv.className = 'message-actions';
                 
                 actionsDiv.innerHTML = `
+                    <div class="feedback-buttons">
+                        <button class="feedback-btn like-btn" data-feedback="positive" title="This response was helpful">
+                            <i class="fas fa-thumbs-up"></i>
+                        </button>
+                        <button class="feedback-btn dislike-btn" data-feedback="negative" title="This response was not helpful">
+                            <i class="fas fa-thumbs-down"></i>
+                        </button>
+                    </div>
                     <button class="action-btn edit" onclick="editMessage(this)" title="Edit">
                         <i class="fas fa-edit"></i> Edit
                     </button>
@@ -3270,8 +3330,116 @@ What business project would you like me to help you with today?`);
     }
     </script>
     <script>
+        // Handle feedback submission
+        async function submitFeedback({button, messageId, feedbackType, messageContent = '', userQuery = '', sessionId = null}) {
+            try {
+                // Update UI
+                const feedbackButtons = button.closest('.feedback-buttons');
+                const allButtons = feedbackButtons.querySelectorAll('.feedback-btn');
+                
+                // Remove active class from all buttons in this group
+                allButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                
+                // Add active class to clicked button
+                button.classList.add('active');
+                
+                // Disable all feedback buttons after selection
+                allButtons.forEach(btn => {
+                    btn.disabled = true;
+                });
+                
+                // Get CSRF token
+                const csrfToken = getCookie('csrftoken') || '';
+                
+                // Send feedback to server
+                const response = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({
+                        message_id: messageId,
+                        feedback: feedbackType,
+                        session_id: sessionId,
+                        user_query: userQuery,
+                        assistant_response: messageContent
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to submit feedback');
+                }
+                
+                // Show success feedback
+                showTooltip(button, 'Thank you for your feedback!');
+                
+                // Log the feedback for debugging
+                console.log('Feedback submitted:', {
+                    messageId,
+                    feedbackType,
+                    sessionId,
+                    userQuery: userQuery.substring(0, 50) + (userQuery.length > 50 ? '...' : ''),
+                    responseContent: messageContent.substring(0, 50) + (messageContent.length > 50 ? '...' : '')
+                });
+                
+            } catch (error) {
+                console.error('Error submitting feedback:', error);
+                
+                // Show error to user
+                const errorMessage = error.message || 'Failed to submit feedback. Please try again.';
+                showTooltip(button, errorMessage);
+                
+                // Re-enable buttons on error
+                const feedbackButtons = button.closest('.feedback-buttons');
+                const allButtons = feedbackButtons?.querySelectorAll('.feedback-btn') || [];
+                allButtons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.classList.remove('active');
+                });
+                
+                // Log detailed error for debugging
+                console.error('Feedback submission failed:', {
+                    messageId,
+                    error: error.message,
+                    stack: error.stack
+                });
+            }
+        }
+        
         // Initialize the application when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', async function() {
+            // Add event delegation for feedback buttons
+            document.addEventListener('click', function(event) {
+                const feedbackBtn = event.target.closest('.feedback-btn');
+                if (feedbackBtn) {
+                    event.preventDefault();
+                    const messageDiv = feedbackBtn.closest('.message');
+                    const messageId = messageDiv.dataset.messageId || Date.now().toString();
+                    const feedbackType = feedbackBtn.dataset.feedback;
+                    const messageContent = messageDiv.dataset.messageContent || '';
+                    
+                    // Get the last user message to include as context
+                    const userMessages = document.querySelectorAll('.user-message');
+                    const lastUserMessage = userMessages.length > 0 ? 
+                        userMessages[userMessages.length - 1].querySelector('.message-content')?.textContent || '' : '';
+                    
+                    // Submit feedback with additional context
+                    submitFeedback({
+                        button: feedbackBtn,
+                        messageId: messageId,
+                        feedbackType: feedbackType,
+                        messageContent: messageContent,
+                        userQuery: lastUserMessage,
+                        sessionId: currentChatId
+                    });
+                }
+            });
+            
             // Initialize chat history
             await initChatHistory();
             

@@ -4,20 +4,29 @@ import json
 import hashlib
 import time
 import uuid
+import shutil
 from functools import lru_cache
 from pathlib import Path
+import asyncio
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime, timedelta
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, status
+from fastapi import (
+    APIRouter, Depends, HTTPException, Request, 
+    BackgroundTasks, status, UploadFile, File, Body
+)
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
-from typing import List, Dict, Any, Optional, Union
-import uuid
-from datetime import datetime, timedelta
-import json
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+# RL Optimizer will be initialized after SYSTEM_PROMPT is defined
+rl_optimizer = None
+
 # Local imports
 from models import (
     ChatMessageORM, User, ChatSessionORM, DocumentORM, QuoteInteractionORM
@@ -107,7 +116,16 @@ def initialize_knowledge_graph():
 # Initialize with sample data
 initialize_knowledge_graph()
 
-SYSTEM_PROMPT = """You are QuestiMate AI, an expert in business quotes and estimates. Your goal is to provide accurate, relevant, and actionable business advice with properly formatted tables.
+# Load system prompt from file first
+SYSTEM_PROMPT_PATH = os.getenv("SYSTEM_PROMPT_FILE", "./app/prompts/system_prompt.txt")
+try:
+    with open(SYSTEM_PROMPT_PATH, "r", encoding='utf-8') as f:
+        SYSTEM_PROMPT = f.read().strip()
+    logger.info("Loaded system prompt from file")
+except Exception as e:
+    logger.error(f"Failed to load system prompt from file: {e}")
+    # Fallback to default prompt
+    SYSTEM_PROMPT = """You are QuestiMate AI, an expert in business quotes and estimates. Your goal is to provide accurate, relevant, and actionable business advice with properly formatted tables.
 
 **IMPORTANT: This system is designed exclusively for business-related queries. You should only respond to questions about:**
 
@@ -396,80 +414,129 @@ def format_chat_history(messages: List[Dict[str, str]]) -> str:
             formatted.append(f"{msg.role}: {msg.content}")
     return "\n".join(formatted) if formatted else "No history"
 
-async def _call_llm(prompt: str) -> str:
-    """Call the model via AI API with optimized RAG/KG prompting."""
-    try:
-        if len(prompt) > MAX_PROMPT_LENGTH:
-            prompt = prompt[-MAX_PROMPT_LENGTH:]
+async def _call_llm(prompt: str, max_retries: int = 3) -> str:
+    """Call the model via OpenRouter API with optimized RAG/KG prompting.
+    
+    Args:
+        prompt: The prompt to send to the model
+        max_retries: Maximum number of retry attempts for temporary failures
+        
+    Returns:
+        The generated response from the model
+    """
+    retry_delay = 1  # Start with 1 second delay
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            if len(prompt) > MAX_PROMPT_LENGTH:
+                prompt = prompt[-MAX_PROMPT_LENGTH:]
+                
+            logger.info(f"Sending prompt to OpenRouter (length: {len(prompt)} chars)")
+            logger.debug(f"Using API URL: {API_URL}")
+            logger.debug(f"Using model: {MODEL_NAME}")
             
-        logger.info(f"Sending prompt to AI (length: {len(prompt)} chars)")
+            headers = {
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://your-site.com",  # Required by OpenRouter
+                "X-Title": "QuestiMate AI"  # Your app name
+            }
+            
+            # OpenRouter expects messages in the chat format
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+            
+            payload = {
+                "model": MODEL_NAME,
+                "messages": messages,
+                "temperature": 0.3,
+                "max_tokens": 2000,
+                "top_p": 0.9,
+                "stop": ["</s>"],
+                "stream": False  # Disable streaming for now
+            }
         
-        headers = {
-            "Authorization": f"Bearer {_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        # AI expects messages in the chat format
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ]
-        
-        payload = {
-            "model": MODEL_NAME,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 2000,
-            "top_p": 0.9,
-            "stop": ["</s>"]
-        }
-        
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    _API_URL,
-                    headers=headers,
-                    json=payload,
-                    timeout=120.0  # Increased timeout for larger models
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                if not data.get("choices"):
-                    raise HTTPException(status_code=500, detail="Empty response from AI")
+            async with httpx.AsyncClient() as client:
+                try:
+                    logger.debug(f"Sending request to OpenRouter with payload: {json.dumps(payload, indent=2)}")
+                    response = await client.post(
+                        API_URL,
+                        headers=headers,
+                        json=payload,
+                        timeout=120.0  # Increased timeout for larger models
+                    )
+                    response.raise_for_status()
+                    data = response.json()
                     
-                response_text = data["choices"][0]["message"]["content"]
-                logger.info(f"Received response (length: {len(response_text)} chars)")
+                    logger.debug(f"OpenRouter response: {json.dumps(data, indent=2)}")
+                    
+                    if not data.get("choices"):
+                        error_msg = data.get("error", {}).get("message", "No choices in response")
+                        logger.error(f"OpenRouter API error: {error_msg}")
+                        return f"I apologize, but the AI service returned an error: {error_msg}"
+                    
+                    # Extract response from OpenRouter format
+                    choice = data["choices"][0]
+                    if "message" in choice:
+                        response_text = choice["message"]["content"]
+                    elif "text" in choice:
+                        response_text = choice["text"]
+                    else:
+                        logger.error(f"Unexpected response format from OpenRouter: {data}")
+                        return "I apologize, but I received an unexpected response format from the AI service."
+                    
+                    logger.info(f"Received response (length: {len(response_text)} chars)")
+                    
+                    # Ensure we always return valid markdown
+                    response_text = response_text or "No content generated"
+                    if not response_text.startswith('#') and not response_text.startswith('**'):
+                        response_text = f"**Response**:\n{response_text}"
+                    
+                    # Fix table formatting if needed
+                    response_text = fix_table_formatting(response_text)
+                    
+                    # Ensure we always return a valid string response
+                    response_text = str(response_text or "").strip()
+                    if not response_text:
+                        response_text = "⚠️ No response was generated. Please try again."
+                        logger.warning(f"Empty response generated for query: {prompt}")
+                    
+                    return response_text
+                    
+                except httpx.ConnectTimeout:
+                    last_error = "Connection to AI service timed out"
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: {last_error}")
+                    if attempt == max_retries - 1:
+                        return "I apologize, but I'm currently unable to connect to the AI service. Please try again later."
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 503:  # Service Unavailable
+                        last_error = f"AI service temporarily unavailable (503)"
+                        logger.warning(f"Attempt {attempt + 1}/{max_retries}: {last_error}")
+                        if attempt == max_retries - 1:
+                            return "I apologize, but the AI service is currently unavailable. Please try again in a few moments."
+                    else:
+                        logger.error(f"AI API error {e.response.status_code}: {e.response.text}")
+                        return f"I apologize, but there was an error with the AI service (HTTP {e.response.status_code}). Please try again later."
+                    
+                except Exception as e:
+                    last_error = str(e)
+                    logger.error(f"Unexpected error in _call_llm (attempt {attempt + 1}): {last_error}", exc_info=True)
+                    if attempt == max_retries - 1:
+                        return "I apologize, but an unexpected error occurred while processing your request. Our team has been notified."
                 
-                # Ensure we always return valid markdown
-                response_text = response_text or "No content generated"
-                if not response_text.startswith('#') and not response_text.startswith('**'):
-                    response_text = f"**Response**:\n{response_text}"
-                
-                # Fix table formatting if needed
-                response_text = fix_table_formatting(response_text)
-                
-                # Ensure we always return a valid string response
-                response_text = str(response_text or "").strip()
-                if not response_text:
-                    response_text = "⚠️ No response was generated. Please try again."
-                    logger.warning(f"Empty response generated for query: {prompt}")
-                
-                return response_text
-                
-            except httpx.ConnectTimeout:
-                logger.error("AI API connection timed out")
-                return "I apologize, but I'm currently unable to connect to the AI service. Please try again later."
-            except httpx.HTTPStatusError as e:
-                logger.error(f"AI API error: {e.response.text}")
-                return f"I apologize, but there was an error with the AI service: {e.response.status_code}"
-            except Exception as e:
-                logger.error(f"AI API error: {str(e)}", exc_info=True)
-                return "I apologize, but an unexpected error occurred while processing your request."
+                # Wait before retrying with exponential backoff
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 2, 10)  # Cap at 10 seconds
+                    logger.info(f"Retrying in {retry_delay} seconds...")
         
-    except Exception as e:
-        logger.error(f"Error in _call_llm: {str(e)}", exc_info=True)
-        return f"I apologize, but an error occurred while processing your request: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error in _call_llm: {str(e)}", exc_info=True)
+            return f"I apologize, but an unexpected error occurred. Please try again later. Request: {str(e)}"
 
 @router.post("/sessions/", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_chat_session(
@@ -643,13 +710,17 @@ Please provide the following details to generate your quotation:
 
 Type your response below and I'll create a detailed quotation for you."""
                 
+                # Generate a unique message ID for feedback tracking
+                message_id = f"msg_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+                
                 # Save the assistant's response
                 assistant_message = ChatMessageORM(
                     user_id=current_user.id,
                     quai_id=current_user.quai_id,
                     role="assistant",
                     content=response_content,
-                    session_id=chat_session.id
+                    session_id=chat_session.id,
+                    message_id=message_id  # Store the message ID in the database
                 )
                 db.add(assistant_message)
                 await db.commit()
@@ -658,6 +729,7 @@ Type your response below and I'll create a detailed quotation for you."""
                     "quote_id": quote_id,
                     "content": response_content,
                     "session_uuid": chat_session.session_uuid,
+                    "message_id": message_id,  # Include message ID for feedback tracking
                     "metadata": {
                         "business_related": True,
                         "error": False,
@@ -772,23 +844,29 @@ Please provide a helpful, detailed response to the user's query. Use clear and c
             await db.rollback()
             logger.error(f"Database error: {str(e)}", exc_info=True)
             # Continue with response even if db fails
+            error_message = "I apologize, but there was an issue saving your conversation."
             return {
-                "content": f"⚠️ Error generating response: {str(e)}",
-                "quote_id": None,
+                "quote_id": str(uuid.uuid4()),
+                "content": error_message,
+                "session_uuid": getattr(chat_session, 'session_uuid', str(uuid.uuid4())),
                 "metadata": {
                     "error": True,
-                    "error_message": str(e)
+                    "error_message": str(e),
+                    "timestamp": datetime.utcnow().isoformat()
                 }
             }
         
     except Exception as e:
         logger.error(f"Chat error: {str(e)}", exc_info=True)
+        error_message = "I apologize, but an unexpected error occurred while processing your request."
         return {
-            "content": f"⚠️ Error generating response: {str(e)}",
-            "quote_id": None,
+            "quote_id": str(uuid.uuid4()),
+            "content": error_message,
+            "session_uuid": getattr(chat_session, 'session_uuid', str(uuid.uuid4())),
             "metadata": {
                 "error": True,
-                "error_message": str(e)
+                "error_message": str(e),
+                "timestamp": datetime.utcnow().isoformat()
             }
         }
 
@@ -1161,13 +1239,14 @@ async def create_message(
             detail="Failed to create message"
         )
 
-# Load system prompt from file
-SYSTEM_PROMPT_PATH = os.getenv("SYSTEM_PROMPT_FILE", "./app/prompts/system_prompt.txt")
+# Now initialize RL Optimizer after SYSTEM_PROMPT is defined
 try:
-    with open(SYSTEM_PROMPT_PATH, "r", encoding='utf-8') as f:
-        SYSTEM_PROMPT = f.read().strip()
-except FileNotFoundError:
-    # Fallback to default prompt if file not found
+    from app.rl_optimizer import QuoteGenerator, QuoteInteractionTracker
+    rl_optimizer = QuoteGenerator(SYSTEM_PROMPT)
+    logger.info("RL Optimizer initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize RL Optimizer: {e}")
+    rl_optimizer = None
     SYSTEM_PROMPT = """You are QuestiMate AI, an expert in business quotes and estimates. Your goal is to provide accurate, relevant, and actionable business advice with properly formatted tables.
     
 **MANDATORY TABLE : only for quotation requests otherwise ignore**
@@ -1465,6 +1544,81 @@ async def get_interaction_analytics():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Feedback model
+class FeedbackRequest(BaseModel):
+    message_id: str
+    feedback: str  # 'positive' or 'negative'
+    session_id: Optional[str] = None
+    user_query: Optional[str] = None
+    assistant_response: Optional[str] = None
+
+# Feedback endpoint
+@router.post("/feedback")
+async def submit_feedback(
+    feedback: FeedbackRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Handle user feedback on assistant responses for reinforcement learning.
+    """
+    try:
+        if not rl_optimizer:
+            logger.warning("RL Optimizer not available")
+            return {"status": "error", "message": "RL Optimizer not available"}
+
+        # Log the feedback
+        logger.info(
+            f"Feedback received - Message ID: {feedback.message_id}, "
+            f"Type: {feedback.feedback}, "
+            f"Session: {feedback.session_id}"
+        )
+
+        # Track the interaction in RL optimizer
+        interaction_type = "download" if feedback.feedback == "positive" else "ignore"
+        
+        # Store additional metadata
+        metadata = {
+            "user_id": str(current_user.id) if current_user else "anonymous",
+            "session_id": feedback.session_id,
+            "user_query": feedback.user_query,
+            "assistant_response": feedback.assistant_response
+        }
+        
+        # Track the interaction
+        rl_optimizer.track_quote_interaction(
+            quote_id=feedback.message_id,
+            interaction_type=interaction_type,
+            metadata=metadata
+        )
+
+        # Update the database with feedback (optional)
+        try:
+            # Find the message in the database and update its feedback
+            result = await db.execute(
+                select(ChatMessageORM)
+                .where(ChatMessageORM.message_id == feedback.message_id)
+            )
+            message = result.scalars().first()
+            
+            if message:
+                # Update feedback in the database
+                message.feedback = feedback.feedback
+                message.updated_at = datetime.utcnow()
+                await db.commit()
+        except Exception as db_error:
+            logger.error(f"Error updating feedback in database: {db_error}")
+            # Don't fail the request if DB update fails
+
+        return {"status": "success", "message": "Feedback received"}
+        
+    except Exception as e:
+        logger.error(f"Error processing feedback: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process feedback"
+        )
+
 # Chat configuration
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
 
@@ -1477,9 +1631,12 @@ async def get_recent_estimates(limit: int = 5):
     """Get recent estimates from the cache."""
     return {"estimates": RECENT_ESTIMATES[-limit:]}
 
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Body, HTTPException, status
 from pathlib import Path
 import shutil
+from pydantic import BaseModel
+from typing import Optional, Dict, Any, List, Union
+from app.rl_optimizer import QuoteGenerator, QuoteInteractionTracker
 
 @router.post("/upload")
 async def upload_files(
