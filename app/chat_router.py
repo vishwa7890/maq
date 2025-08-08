@@ -59,7 +59,8 @@ import os
 
 load_dotenv(Path(__file__).parent.parent / '.env')
 
-# Configuration from environment variables
+# Configuration from environment variables (with safe fallbacks)
+# Prefer generic names, but support OpenRouter defaults
 API_KEY = os.getenv("API_KEY")
 API_URL = os.getenv("API_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
@@ -435,6 +436,15 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
             logger.info(f"Sending prompt to OpenRouter (length: {len(prompt)} chars)")
             logger.debug(f"Using API URL: {API_URL}")
             logger.debug(f"Using model: {MODEL_NAME}")
+
+            # Validate essential configuration
+            if not API_URL or not API_KEY or not MODEL_NAME:
+                missing = []
+                if not API_KEY: missing.append("API_KEY/OPENROUTER_API_KEY")
+                if not API_URL: missing.append("API_URL")
+                if not MODEL_NAME: missing.append("MODEL_NAME")
+                logger.error(f"Missing configuration: {', '.join(missing)}")
+                return "I apologize, but the AI service is not configured correctly. Please set API_KEY, API_URL, and MODEL_NAME in the environment."
             
             headers = {
                 "Authorization": f"Bearer {API_KEY}",
@@ -446,6 +456,11 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
             # OpenRouter expects messages in the chat format
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": (
+                    "CRITICAL: Respond ONLY using properly formatted markdown tables as per the system rules. "
+                    "Do NOT include paragraphs outside tables. Ensure headers, separator rows, consistent column counts, "
+                    "and INR currency where monetary values are shown. If the user asks for a quotation, the first table MUST be the summary table."
+                )},
                 {"role": "user", "content": prompt}
             ]
             
@@ -513,14 +528,29 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
                         return "I apologize, but I'm currently unable to connect to the AI service. Please try again later."
                         
                 except httpx.HTTPStatusError as e:
-                    if e.response.status_code == 503:  # Service Unavailable
+                    status_code = e.response.status_code
+                    if status_code == 429:  # Rate limited
+                        # Respect Retry-After if present
+                        retry_after = e.response.headers.get("Retry-After")
+                        try:
+                            retry_after = int(retry_after) if retry_after else retry_delay
+                        except Exception:
+                            retry_after = retry_delay
+                        last_error = f"Rate limited (429). Retrying in {retry_after}s."
+                        logger.warning(f"Attempt {attempt + 1}/{max_retries}: {last_error}")
+                        if attempt == max_retries - 1:
+                            return "I apologize, but the AI service is receiving too many requests right now. Please try again shortly."
+                        await asyncio.sleep(retry_after)
+                        retry_delay = min(retry_delay * 2, 10)
+                        continue
+                    elif status_code == 503:  # Service Unavailable
                         last_error = f"AI service temporarily unavailable (503)"
                         logger.warning(f"Attempt {attempt + 1}/{max_retries}: {last_error}")
                         if attempt == max_retries - 1:
                             return "I apologize, but the AI service is currently unavailable. Please try again in a few moments."
                     else:
-                        logger.error(f"AI API error {e.response.status_code}: {e.response.text}")
-                        return f"I apologize, but there was an error with the AI service (HTTP {e.response.status_code}). Please try again later."
+                        logger.error(f"AI API error {status_code}: {e.response.text}")
+                        return f"I apologize, but there was an error with the AI service (HTTP {status_code}). Please try again later."
                     
                 except Exception as e:
                     last_error = str(e)
@@ -766,10 +796,15 @@ Use the exact table format specified in the system prompt.
                 enhanced_prompt = f"""
 User Query: {request.content}
 
+                
 Business Context: {knowledge_graph.get_business_context(request.content)}
 Reference Documents: {get_rag_context(request.content, max_results=3)}
-
-Please provide a helpful, detailed response to the user's query. Use clear and concise language. If the query is not business-related, politely inform the user that this system is designed for business-related inquiries.
+                
+CRITICAL: Respond ONLY with markdown tables following the system's formatting rules. Do NOT include paragraphs outside tables.
+- Use INR for all monetary values
+- Ensure headers and separator rows exist and columns are consistent
+- Include Products and Services sections when relevant
+- If the user is asking for a quote, the first table MUST be the summary table (Client Name, Project Name, Date)
 """
             
             try:
