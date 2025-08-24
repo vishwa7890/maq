@@ -15,6 +15,7 @@ from fastapi import (
     APIRouter, Depends, HTTPException, Request, 
     BackgroundTasks, status, UploadFile, File, Body
 )
+from sqlalchemy import func
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -616,6 +617,22 @@ async def chat(
     quote_id = str(uuid.uuid4())
     
     try:
+        # Check chat limit for normal users
+        if current_user.role == 'normal':
+            # Count existing chat sessions for the user
+            chat_count = await db.execute(
+                select(func.count())
+                .select_from(ChatSessionORM)
+                .where(ChatSessionORM.user_id == current_user.id)
+            )
+            chat_count = chat_count.scalar()
+            
+            if chat_count >= MAX_CHATS_FOR_NORMAL_USERS:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You have reached the maximum number of chat sessions ({MAX_CHATS_FOR_NORMAL_USERS}). Please delete some chats or upgrade to premium."
+                )
+        
         # Get or create current chat session for the user
         chat_session_id = getattr(request, 'chat_id', None)
         
@@ -911,33 +928,67 @@ async def uiux_estimate(project_details: Dict[str, Any]):
     try:
         # Format the project details into a prompt
         prompt = f"""
-        Generate a detailed UI/UX estimate with this structure:
+        Generate a professional UI/UX design proposal with the following details:
         
-        Client Name: {project_details.get('client_name', "[Client's Name]")}
-        Project Name: {project_details.get('project_name', "[Project Title]")}
+        # UI/UX Design Proposal
         
-        Scope of Work:
-        - User Research (Persona creation, surveys, interviews)
-        - Competitive Analysis
-        - Information Architecture (Sitemap & User Flows)
-        - Wireframes (Low-fidelity + High-fidelity)
-        - Interactive Prototypes (Figma/InVision)
-        - Visual Design (Color palette, typography, UI components)
-        - Design Handoff (Style guide & assets for developers)
+        ## Client Information
+        - **Client Name:** {project_details.get('client_name', "[Client's Name]")}
+        - **Project Name:** {project_details.get('project_name', "[Project Title]")}
+        - **Project Type:** {project_details.get('project_type', 'UI/UX Design')}
+        - **Project Scope:** {project_details.get('project_scope', 'Full UI/UX design for a web application')}
         
-        Timeline: 3 to 4 Weeks
+        ## Cost Breakdown
+        | Description | Amount (INR) |
+        |-------------|-------------:|
+        | Estimated Hours | {project_details.get('estimated_hours', 80)} |
+        | Hourly Rate | ₹{project_details.get('hourly_rate', 2000):,} |
+        | **Subtotal** | **₹{project_details.get('hourly_rate', 2000) * project_details.get('estimated_hours', 80):,}** |
+        | Discount (0%) | ₹0 |
+        | **Total Estimate** | **₹{project_details.get('hourly_rate', 2000) * project_details.get('estimated_hours', 80):,}** |
         
-        Pricing in INR:
-        - Research & Discovery: 10000
-        - Wireframes: 7500
-        - UI Design: 15000
-        - Prototyping & Revisions: 5000
-        - Design Handoff: 2500
+        ## Project Timeline
+        - **Start Date:** {project_details.get('start_date', '2025-09-01')}
+        - **End Date:** {project_details.get('end_date', '2025-09-30')}
+        - **Duration:** 4 weeks
         
-        Notes: This is a fixed-price quote. Additional revisions or scope changes may incur extra costs.
+        ## Service Phases
+        | Phase | Deliverables | Timeline | Cost (INR) |
+        |-------|--------------|----------|-----------:|
+        | **Research & Discovery** | User interviews, competitor analysis, user personas | Week 1 | ₹20,000 |
+        | **Wireframing** | Low-fidelity wireframes for key screens | Week 2 | ₹30,000 |
+        | **UI Design** | High-fidelity mockups, style guide, component library | Week 3 | ₹50,000 |
+        | **Prototyping** | Interactive prototype, user flow animations | Week 3-4 | ₹30,000 |
+        | **Testing & Iteration** | Usability testing, feedback incorporation, final tweaks | Week 4 | ₹30,000 |
+        | | **Total** | | **₹160,000** |
+        
+        ## Terms & Conditions
+        - **Payment Terms:** 50% advance, 50% on completion
+        - **Validity:** 30 days from quote date ({(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')})
+        - **Next Steps:** Schedule kickoff meeting, provide assets
+        - **Notes:** This estimate is valid for 30 days. Additional revisions or scope changes may incur extra costs.
         
         Return ONLY valid JSON matching this schema:
-        {{'client_name': str, 'project_name': str, 'scope_of_work': {{'Phase': ['Activity1', 'Activity2']}}, 'timeline': str, 'pricing': {{'Item': float}}, 'total': float, 'notes': str, 'payment_terms': str}}
+        {{
+            'client_name': str, 
+            'project_name': str,
+            'project_type': str,
+            'project_scope': str,
+            'estimated_hours': int,
+            'hourly_rate': float,
+            'start_date': str,
+            'end_date': str,
+            'phases': [
+                {{
+                    'name': str,
+                    'deliverables': List[str],
+                    'timeline': str,
+                    'cost': float
+                }}
+            ],
+            'payment_terms': str,
+            'notes': str
+        }}
         """
         
         response_text = await _call_llm(prompt)
@@ -1656,6 +1707,7 @@ async def submit_feedback(
 
 # Chat configuration
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
+MAX_CHATS_FOR_NORMAL_USERS = 10  # Maximum number of chat sessions for normal users
 
 # In-memory cache for recent estimates
 RECENT_ESTIMATES = []

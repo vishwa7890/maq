@@ -7,12 +7,23 @@ export type FetchOptions = RequestInit & {
   json?: any
 }
 
+const cache = new Map();
+const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
+
 export async function apiFetch(path: string, opts: FetchOptions = {}) {
   // If calling Next.js internal API route, do not prefix with backend URL
   const isExternal = path.startsWith('http')
   const isInternalApi = path.startsWith('/api/')
   const url = isExternal ? path : isInternalApi ? path : `${API_BASE}${path}`
   const { json, headers, ...rest } = opts
+  
+  // Check cache for GET requests
+  if (rest.method === 'GET' || !rest.method) {
+    const cached = cache.get(url);
+    if (cached && Date.now() - cached.timestamp < CACHE_TIME) {
+      return cached.data;
+    }
+  }
 
   // Ensure we include credentials for all requests to maintain session
   const fetchOptions: RequestInit = {
@@ -20,6 +31,7 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
     credentials: 'include', // This will handle sending/receiving cookies automatically
     headers: {
       'Accept': 'application/json',
+      'Cache-Control': 'no-cache',
       ...(json ? { 'Content-Type': 'application/json' } : {}),
       ...(headers || {}),
     },

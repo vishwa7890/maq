@@ -1,32 +1,51 @@
 'use client'
 
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Download, Edit3, Save, X, FileText, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, Calendar, Clock, IndianRupee, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { format, parseISO, isValid } from 'date-fns'
 
-interface QuoteItem {
+interface QuotePhase {
+  name: string
+  deliverables: string[]
+  timeline: string
+  cost: number
+}
+
+type QuoteItem = {
   description: string
   quantity: number
-  rate: number
+  unit_price: number
   amount: number
 }
 
 interface Quote {
   id: string
-  title?: string
-  items: QuoteItem[]
-  subtotal: number
-  tax: number
+  client_name: string
+  project_name: string
+  project_type: string
+  project_scope: string
+  estimated_hours: number
+  hourly_rate: number
+  start_date: string
+  end_date: string
+  phases: QuotePhase[]
   total: number
-  terms?: string
+  payment_terms: string
+  notes: string
   has_watermark?: boolean
   can_edit?: boolean
   created_at?: string
-  validUntil?: Date
+  validUntil?: string
+  title?: string
+  items?: Array<{
+    description: string
+    quantity: number
+    unit_price: number
+    amount: number
+  }>
 }
 
 interface QuoteResponseProps {
@@ -35,57 +54,42 @@ interface QuoteResponseProps {
   className?: string
 }
 
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return 'To be determined'
+  try {
+    const date = new Date(dateString)
+    return isValid(date) ? format(date, 'MMM d, yyyy') : 'Invalid date'
+  } catch (e) {
+    return 'Invalid date'
+  }
+}
+
 export function QuoteResponse({ quote, userRole, className }: QuoteResponseProps) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editedItems, setEditedItems] = useState(quote.items)
+  const [formattedDate, setFormattedDate] = useState('')
+  const [editedItems, setEditedItems] = useState<QuoteItem[]>((quote.items ?? []) as QuoteItem[])
 
-  const handleEdit = () => {
-    if (userRole !== 'premium') return
-    setIsEditing(true)
-  }
-
-  const handleSave = () => {
-    // Update quote with edited items
-    setIsEditing(false)
-    // Here you would typically save to backend
-  }
-
-  const handleCancel = () => {
-    setEditedItems(quote.items)
-    setIsEditing(false)
-  }
-
-  const updateItem = (index: number, field: keyof QuoteItem, value: string | number) => {
-    const updated = [...editedItems]
-    updated[index] = { ...updated[index], [field]: value }
-    
-    if (field === 'quantity' || field === 'rate') {
-      updated[index].amount = updated[index].quantity * updated[index].rate
+  useEffect(() => {
+    if (quote.created_at) {
+      setFormattedDate(formatDate(quote.created_at))
     }
-    
-    setEditedItems(updated)
+  }, [quote.created_at])
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
   }
 
-  const downloadPDF = () => {
-    // Simulate PDF download
-    const element = document.createElement('a')
-    const file = new Blob(['Quote PDF content'], { type: 'application/pdf' })
-    element.href = URL.createObjectURL(file)
-    element.download = `quote-${quote.id}.pdf`
-    document.body.appendChild(element)
-    element.click()
-    document.body.removeChild(element)
-  }
-
-  const subtotal = editedItems.reduce((sum, item) => sum + item.amount, 0)
-  const tax = subtotal * 0.18 // 18% GST
-  const total = subtotal + tax
+  // Placeholder: implement PDF download and editing when ready
 
   return (
     <Card className={cn("w-full", className)}>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle className="text-lg">Professional Quote</CardTitle>
+          <h2 className="text-lg font-semibold">Professional Quote</h2>
           {quote.title && (
             <p className="text-sm text-gray-600 mt-1">{quote.title}</p>
           )}
@@ -93,148 +97,151 @@ export function QuoteResponse({ quote, userRole, className }: QuoteResponseProps
         <div className="flex items-center gap-2">
           {quote.validUntil && (
             <Badge variant="outline">
-              Valid until {quote.validUntil.toLocaleDateString()}
+              Valid until {formatDate(quote.validUntil)}
             </Badge>
           )}
           
           {(quote.has_watermark || userRole === 'normal') && (
             <Badge variant="destructive" className="text-xs">
               <AlertTriangle className="h-3 w-3 mr-1" />
-              Watermarked
+              Sample
             </Badge>
           )}
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-4">
-        {/* Quote Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-gray-200">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="border border-gray-200 p-2 text-left">Description</th>
-                <th className="border border-gray-200 p-2 text-center">Qty</th>
-                <th className="border border-gray-200 p-2 text-right">Rate (₹)</th>
-                <th className="border border-gray-200 p-2 text-right">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(isEditing ? editedItems : quote.items).map((item, index) => (
-                <tr key={index}>
-                  <td className="border border-gray-200 p-2">
-                    {isEditing ? (
-                      <Input
-                        value={item.description}
-                        onChange={(e) => updateItem(index, 'description', e.target.value)}
-                        className="h-8"
-                      />
-                    ) : (
-                      item.description
-                    )}
-                  </td>
-                  <td className="border border-gray-200 p-2 text-center">
-                    {isEditing ? (
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                        className="h-8 w-16 text-center"
-                      />
-                    ) : (
-                      item.quantity
-                    )}
-                  </td>
-                  <td className="border border-gray-200 p-2 text-right">
-                    {isEditing ? (
-                      <Input
-                        type="number"
-                        value={item.rate}
-                        onChange={(e) => updateItem(index, 'rate', parseInt(e.target.value) || 0)}
-                        className="h-8 w-20 text-right"
-                      />
-                    ) : (
-                      item.rate.toLocaleString()
-                    )}
-                  </td>
-                  <td className="border border-gray-200 p-2 text-right font-medium">
-                    ₹{item.amount.toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={3} className="border border-gray-200 p-2 text-right font-medium">
-                  Subtotal:
-                </td>
-                <td className="border border-gray-200 p-2 text-right font-medium">
-                  ₹{subtotal.toLocaleString()}
-                </td>
-              </tr>
-              <tr>
-                <td colSpan={3} className="border border-gray-200 p-2 text-right">
-                  Tax (18%):
-                </td>
-                <td className="border border-gray-200 p-2 text-right">
-                  ₹{tax.toLocaleString()}
-                </td>
-              </tr>
-              <tr className="bg-blue-50">
-                <td colSpan={3} className="border border-gray-200 p-2 text-right font-bold">
-                  Total:
-                </td>
-                <td className="border border-gray-200 p-2 text-right font-bold text-blue-600">
-                  ₹{total.toLocaleString()}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center justify-between pt-4">
-          <div className="flex items-center gap-2">
-            {isEditing ? (
-              <>
-                <Button size="sm" onClick={handleSave}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Changes
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleCancel}>
-                  <X className="h-4 w-4 mr-2" />
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button size="sm" onClick={downloadPDF}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download PDF
-                </Button>
-                
-                {userRole === 'premium' ? (
-                  <Button size="sm" variant="outline" onClick={handleEdit}>
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    Edit Quote
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="outline" disabled>
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    Edit (Premium Only)
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-
-          {userRole === 'normal' && (
-            <div className="text-xs text-red-600 flex items-center gap-1">
-              <FileText className="h-3 w-3" />
-              PDF will include watermark
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h3 className="text-lg font-medium mb-2">Project Details</h3>
+            <div className="space-y-1 text-sm">
+              <p><span className="font-medium">Client:</span> {quote.client_name || 'N/A'}</p>
+              <p><span className="font-medium">Project:</span> {quote.project_name || 'N/A'}</p>
+              <p><span className="font-medium">Type:</span> {quote.project_type || 'N/A'}</p>
+              <p><span className="font-medium">Scope:</span> {quote.project_scope || 'N/A'}</p>
             </div>
-          )}
+          </div>
+          <div>
+            <h3 className="text-lg font-medium mb-2">Estimate Summary</h3>
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <div className="grid grid-cols-2 gap-2">
+                <span>Estimated Hours:</span>
+                <span className="text-right">{quote.estimated_hours || 'N/A'}</span>
+                
+                <span>Hourly Rate:</span>
+                <span className="text-right">
+                  <IndianRupee className="inline h-3.5 w-3.5 mr-0.5" />
+                  {quote.hourly_rate?.toLocaleString() || 'N/A'}
+                </span>
+                
+                <span className="font-semibold">Total Estimate:</span>
+                <span className="text-right font-bold">
+                  <IndianRupee className="inline h-4 w-4 mr-0.5" />
+                  {quote.total ? formatCurrency(quote.total) : 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Project Timeline</h2>
+          <div className="space-y-6">
+            {quote.phases?.map((phase, idx) => (
+              <div key={idx} className="border-l-2 border-primary pl-4 relative">
+                <div className="absolute -left-2 top-0 w-3 h-3 rounded-full bg-primary"></div>
+                <div className="bg-card p-4 rounded-lg shadow-sm">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-medium text-lg">{phase.name}</h3>
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4 mr-1" />
+                      {phase.timeline}
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <h4 className="font-medium text-sm mb-1">Deliverables:</h4>
+                    <ul className="space-y-1 text-sm">
+                      {phase.deliverables.map((item, i) => (
+                        <li key={i} className="flex items-start">
+                          <CheckCircle2 className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="mt-3 pt-3 border-t flex justify-end">
+                    <span className="font-medium">
+                      <IndianRupee className="inline h-4 w-4 mr-1" />
+                      {phase.cost.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+          <div>
+            <h2 className="text-xl font-semibold mb-3">Payment Terms</h2>
+            <div className="space-y-2 text-sm">
+              {quote.payment_terms ? (
+                <p>{quote.payment_terms}</p>
+              ) : (
+                <>
+                  <div className="flex items-center">
+                    <CheckCircle2 className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
+                    <span>50% advance payment to begin work</span>
+                  </div>
+                  <div className="flex items-center">
+                    <CheckCircle2 className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
+                    <span>50% upon project completion</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          
+          <div>
+            <h2 className="text-xl font-semibold mb-3">Project Validity</h2>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center">
+                <Calendar className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                <span>Start: {quote.start_date ? format(parseISO(quote.start_date), 'MMM d, yyyy') : 'To be determined'}</span>
+              </div>
+              <div className="flex items-center">
+                <Calendar className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                <span>End: {quote.end_date ? format(parseISO(quote.end_date), 'MMM d, yyyy') : 'To be determined'}</span>
+              </div>
+              {quote.validUntil && (
+                <div className="flex items-center text-amber-600">
+                  <Clock className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <span>Valid until: {format(parseISO(quote.validUntil), 'MMM d, yyyy')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {quote.notes && (
+          <div className="mt-6 p-4 bg-muted/30 rounded-md">
+            <h3 className="font-medium mb-2">Additional Notes</h3>
+            <p className="text-sm">{quote.notes}</p>
+          </div>
+        )}
       </CardContent>
+
+      <CardFooter className="bg-muted/20 border-t py-4">
+        <div className="w-full flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground">
+          <div className="text-center md:text-left mb-2 md:mb-0">
+            <p>Prepared by Your Company</p>
+            <p>contact@yourcompany.com</p>
+          </div>
+          <div className="text-center">
+            <p>Thank you for your business!</p>
+            <p className="text-xs mt-1">Quote #{Math.floor(100000 + Math.random() * 900000)}</p>
+            <p className="text-xs">Prepared on {formattedDate || 'N/A'}</p>
+          </div>
+        </div>
+      </CardFooter>
     </Card>
   )
 }

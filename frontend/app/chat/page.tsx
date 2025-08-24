@@ -79,87 +79,205 @@ export default function ChatPage() {
 
   // Auto-generate and download PDF using jsPDF (from html2pdf bundle) with fallback
   const downloadMessageAsPdf = async (msg: Message) => {
+    // Prepare content outside try block to ensure it's available in catch block
     let contentHtml = convertMarkdownTablesToHtml(msg.content)
     if (!contentHtml || contentHtml.trim().length === 0) {
       const safe = mdEscapeHtml(msg.content || '')
-      contentHtml = `<pre style=\"white-space:pre-wrap;word-wrap:break-word;font-size:12px;\">${safe}</pre>`
+      contentHtml = `<pre style="white-space:pre-wrap;word-wrap:break-word;font-size:12px;font-family:inherit;">${safe}</pre>`
     }
+
     try {
+      // Ensure the PDF libraries are loaded
       await ensureHtml2Pdf()
+      
+      // Create a container for the PDF content
       const container = document.createElement('div')
       container.style.position = 'fixed'
       container.style.left = '0'
       container.style.top = '0'
-      container.style.width = '794px' // ~A4 width at 96dpi
-      container.style.opacity = '0' // render in-flow but invisible
+      container.style.width = '794px' // A4 width at 96dpi
+      container.style.padding = '24px'
+      container.style.boxSizing = 'border-box'
+      container.style.opacity = '0'
       container.style.pointerEvents = 'none'
       container.style.backgroundColor = '#ffffff'
+      container.style.zIndex = '9999' // Ensure it's above other elements
+      
+      // Add watermark for free users
       const showWatermark = (user?.role === 'normal')
       const watermark = showWatermark
-        ? `<div style=\"position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0.09;z-index:0;\">`
-            + `<div style=\"transform:rotate(-30deg);font-size:84px;font-weight:800;color:#111827;letter-spacing:4px;\">FREE PLAN</div>`
-          + `</div>`
+        ? `<div style="position:fixed;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0.09;z-index:1;font-family:sans-serif;">
+            <div style="transform:rotate(-30deg);font-size:84px;font-weight:800;color:#111827;letter-spacing:4px;">FREE PLAN</div>
+          </div>`
         : ''
+      
+      // Set the container content
       container.innerHTML = `
-        <div style=\"position:relative;\">${watermark}
-          <div style=\"position:relative;z-index:1;font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; padding: 24px; color: #111827;\">
-            <h1 style=\"font-size:16px; margin:0 0 12px;\">Assistant Response</h1>
-            ${contentHtml}
+        <div style="position:relative;width:100%;height:100%;">
+          ${watermark}
+          <div style="position:relative;z-index:2;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:#111827;">
+            <h1 style="font-size:16px;margin:0 0 12px 0;font-weight:600;">Assistant Response</h1>
+            <div style="font-size:14px;line-height:1.5;">
+              ${contentHtml}
+            </div>
           </div>
         </div>
       `
+      
+      // Add to document and wait for rendering
       document.body.appendChild(container)
-      // Diagnostics
-      console.debug('[PDF] html length:', contentHtml.length)
-      console.debug('[PDF] container child count:', container.childElementCount)
-      // Wait a frame + small timeout to ensure layout/paint completes before rasterization
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      await new Promise<void>((resolve) => setTimeout(resolve, 150))
+      
+      // Wait for any images to load and rendering to complete
+      await new Promise<void>((resolve) => {
+        // Check if there are any images in the content
+        const images = container.getElementsByTagName('img')
+        let imagesToLoad = images.length
+        
+        if (imagesToLoad === 0) {
+          // No images, just wait for the next frame
+          requestAnimationFrame(() => setTimeout(resolve, 100))
+          return
+        }
+        
+        // Wait for all images to load
+        const onImageLoad = () => {
+          imagesToLoad--
+          if (imagesToLoad === 0) {
+            // All images loaded, wait one more frame for good measure
+            requestAnimationFrame(() => setTimeout(resolve, 100))
+          }
+        }
+        
+        // Set up load/error handlers for each image
+        for (const img of Array.from(images)) {
+          if (img.complete) {
+            imagesToLoad--
+          } else {
+            img.addEventListener('load', onImageLoad)
+            img.addEventListener('error', onImageLoad) // Also handle errors
+          }
+        }
+        
+        // In case all images are already loaded
+        if (imagesToLoad === 0) {
+          requestAnimationFrame(() => setTimeout(resolve, 100))
+        }
+      })
+      
+      // Get the PDF library
       const anyWin = window as any
       const jsPDFCtor = anyWin.jspdf?.jsPDF || anyWin.jsPDF || (anyWin.jspdf && anyWin.jspdf.jsPDF)
+      
+      // Try jsPDF with html2canvas first
       if (jsPDFCtor) {
-        const doc = new jsPDFCtor({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+        const doc = new jsPDFCtor({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+        })
+        
+        // Add HTML content with proper scaling and margins
         await doc.html(container, {
-          x: 10,
-          y: 10,
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          x: 15,
+          y: 15,
+          width: 180, // 210mm - 15mm margins on each side
+          windowWidth: 794, // Match the container width
           autoPaging: 'text',
+          html2canvas: {
+            scale: 2, // Higher scale for better quality
+            useCORS: true,
+            backgroundColor: '#ffffff',
+            logging: true,
+            scrollX: 0,
+            scrollY: 0
+          },
           callback: (doc: any) => {
             doc.save(`message-${msg.id}.pdf`)
+            container.remove()
           },
         })
-      } else if (anyWin.html2pdf) {
+      } 
+      // Fallback to html2pdf if available
+      else if (anyWin.html2pdf) {
         const opt = {
-          margin: 10,
+          margin: 15,
           filename: `message-${msg.id}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'legacy'] }
+          image: { 
+            type: 'jpeg', 
+            quality: 0.95 
+          },
+          html2canvas: { 
+            scale: 2, 
+            useCORS: true, 
+            backgroundColor: '#ffffff',
+            logging: true
+          },
+          jsPDF: { 
+            unit: 'mm', 
+            format: 'a4', 
+            orientation: 'portrait' 
+          }
         }
-        await anyWin.html2pdf().set(opt).from(container).save()
-      } else {
-        console.error('[PDF] Neither jsPDF nor html2pdf available')
-        throw new Error('No PDF engine')
+        
+        await anyWin.html2pdf()
+          .set(opt)
+          .from(container)
+          .save()
+          .then(() => {
+            container.remove()
+          })
+      } 
+      // No PDF engine available
+      else {
+        throw new Error('No PDF generation library available')
       }
-      container.remove()
     } catch (e) {
-      // Secondary fallback: use jsPDF text rendering if available
+      console.error('PDF generation error:', e)
+      
+      // Fallback to simple text-based PDF
       try {
-        await ensureHtml2Pdf()
         const anyWin = window as any
         const jsPDFCtor = anyWin.jspdf?.jsPDF || anyWin.jsPDF || (anyWin.jspdf && anyWin.jspdf.jsPDF)
+        
         if (jsPDFCtor) {
-          const doc = new jsPDFCtor({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+          const doc = new jsPDFCtor({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+          })
+          
+          // Simple text rendering as fallback
           const safeText = (msg.content || '').replace(/\r/g, '')
-          const lines = doc.splitTextToSize(safeText, 190) // 210mm - 20mm margins
+          const lines = doc.splitTextToSize(safeText, 180) // 210mm - 15mm margins on each side
+          
+          // Set font and add header
           doc.setFont('helvetica', 'normal')
+          doc.setFontSize(14)
+          doc.text('Assistant Response', 15, 15)
+          
+          // Add content
           doc.setFontSize(11)
-          doc.text(lines, 10, 15)
+          doc.text(lines, 15, 25)
+          
+          // Add watermark for free users if needed
+          if (user?.role === 'normal') {
+            doc.setFontSize(60)
+            doc.setTextColor(200, 200, 200)
+            doc.setGState(new (doc as any).GState({ opacity: 0.2 }))
+            doc.text('FREE PLAN', 30, 150, { angle: 45 })
+          }
+          
+          // Save the PDF
           doc.save(`message-${msg.id}.pdf`)
           return
         }
-      } catch {}
+      } catch (fallbackError) {
+        console.error('Fallback PDF generation failed:', fallbackError)
+      }
+      
+      // If all else fails, show an error to the user
+      alert('Failed to generate PDF. Please try again or contact support.')
+      
       // Robust fallback: open a printable HTML and trigger browser Print-to-PDF
       const printable = `<!doctype html>
 <html>
