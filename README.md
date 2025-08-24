@@ -1,4 +1,4 @@
-# QuestiMate with RAG + Knowledge Graph
+# Lumina Quo with RAG + Knowledge Graph
 
 A FastAPI-based chat application that combines Retrieval-Augmented Generation (RAG) with a knowledge graph to provide intelligent responses about business services, products, and project estimates.
 

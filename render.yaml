@@ -17,7 +17,7 @@ defaults:
       value: "production"
     - key: DATABASE_URL
       fromDatabase:
-        name: questimate-db
+        name: lumina-quo-db
         property: connectionString
     - key: SECRET_KEY
       generateValue: true
