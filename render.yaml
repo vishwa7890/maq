@@ -1,115 +1,219 @@
-# Render.com configuration file
+# =============================================
+# Render.com Configuration for Questimate API
+# =============================================
 # Reference: https://render.com/docs/deploy-fastapi
 
-# Global settings
-defaults:
+# ====================
+# Global Settings
+# ====================
+global:
   env: python
-  envVars:
-    - key: PYTHONUNBUFFERED
-      value: "1"
-    - key: PYTHONPATH
-      value: "/opt/render/project/src"
-    - key: PYTHON_VERSION
-      value: "3.10.8"
-    - key: ENVIRONMENT
-      value: "production"
-    - key: DATABASE_URL
-      fromDatabase:
-        name: lumina-quo-db
-        property: connectionString
-    - key: SECRET_KEY
-      generateValue: true
-    - key: ALGORITHM
-      value: "HS256"
-    - key: ACCESS_TOKEN_EXPIRE_MINUTES
-      value: "30"
-    - key: OPENROUTER_API_KEY
-      sync: false  # Set this in the Render dashboard
-    - key: OPENROUTER_API_URL
-      value: "https://openrouter.ai/api/v1/chat/completions"
-    - key: MODEL_NAME
-      value: "mistralai/mistral-7b-instruct:free"
-    - key: MAX_PROMPT_LENGTH
-      value: "8000"
-    - key: CHAT_HISTORY_LIMIT
-      value: "20"
-    - key: MAX_RECENT_ESTIMATES
-      value: "10"
+  pythonVersion: "3.10.8"
+  nodeVersion: "18.x"
+  
+# ====================
+# Environment Variables
+# ====================
+envVars:
+  # Python Configuration
+  - key: PYTHONUNBUFFERED
+    value: "1"
+  - key: PYTHONPATH
+    value: "/opt/render/project/src"
+  - key: PYTHON_VERSION
+    value: "3.10.8"
+  - key: PYTHONDONTWRITEBYTECODE
+    value: "1"
+  
+  # Application Configuration
+  - key: ENVIRONMENT
+    value: "production"
+  - key: DEBUG
+    value: "False"
+  - key: LOG_LEVEL
+    value: "INFO"
+  
+  # Database
+  - key: DATABASE_URL
+    fromDatabase:
+      name: questimate-db
+      property: connectionString
+  
+  # Security
+  - key: SECRET_KEY
+    generateValue: true
+  - key: ALGORITHM
+    value: "HS256"
+  - key: ACCESS_TOKEN_EXPIRE_MINUTES
+    value: "30"
+  - key: CORS_ORIGINS
+    value: "*"  # Restrict in production
+  - key: RATE_LIMIT
+    value: "1000"
+  
+  # Performance
+  - key: MAX_PROMPT_LENGTH
+    value: "8000"
+  - key: CHAT_HISTORY_LIMIT
+    value: "20"
+  - key: MAX_RECENT_ESTIMATES
+    value: "10"
+  - key: WORKERS_PER_CORE
+    value: "2"
+  - key: WEB_CONCURRENCY
+    value: "4"
 
-# Web service
+# ====================
+# Services
+# ====================
 services:
   - type: web
     name: questimate-api
     env: python
-    pythonVersion: 3.10.8   # ✅ Explicitly set Python version
+    region: oregon  # Choose closest region
+    plan: free
+    
+    # Build Configuration
     buildCommand: |
       python --version
       pip install --upgrade pip
-      pip install -r requirements.txt
+      pip install --no-cache-dir -r requirements.txt
       python -m database.database create_tables
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4
-    envVars:
-      - key: PORT
-        value: 10000
-    build:
-      buildpacks:
-        - heroku/python
-    plan: free
+    
+    # Runtime Configuration
+    startCommand: |
+      gunicorn app.main:app \
+        --workers $WORKERS_PER_CORE \
+        --worker-class uvicorn.workers.UvicornWorker \
+        --bind 0.0.0.0:$PORT \
+        --timeout 120 \
+        --keep-alive 5 \
+        --worker-connections 1000
+    
+    # Auto-Deployment
     autoDeploy: true
+    branch: main  # Deploy on main branch push
+    
+    # Health Checks
     healthCheckPath: /api/health
     healthCheckTimeout: 30
+    
+    # Scaling (for paid plans)
+    # numInstances: 1
+    # instanceSize: 1x
+    
+    # Environment Overrides
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: GUNICORN_CMD_ARGS
+        value: "--worker-tmp-dir /dev/shm --workers $WORKERS_PER_CORE --threads $WORKERS_PER_CORE"
 
-# Database configuration
+# ====================
+# Database
+# ====================
 databases:
   - name: questimate-db
     databaseName: questimate
     user: questimate_user
-    plan: free  # For production, consider using a paid plan
+    plan: free  # Upgrade for production
+    # Recommended for production:
+    # plan: standard-0  # Or higher based on needs
+    # region: oregon
+    # extensions:
+    #   - pg_stat_statements
+    #   - pgcrypto
 
-# Build configuration
-builds:
-  - env: python
-    buildCommand: |
-      pip install -r requirements.txt
-      python -m database.database create_tables
-
-# Environment-specific settings
-environments:
-  - name: production
-    buildCommand: |
-      pip install -r requirements.txt --no-cache-dir
-      python -m database.database create_tables
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: PYTHONUNBUFFERED
-        value: "1"
-      - key: PYTHONPATH
-        value: "/opt/render/project/src"
-
-# Health check configuration
-healthChecks:
-  - name: api-health
-    path: /api/health
-    timeoutSeconds: 30
-    intervalSeconds: 60
-    initialDelaySeconds: 10
-    threshold: 3
-    successThreshold: 1
-    failureThreshold: 3
-
-# Required for OpenRouter API access
-crons: []  # No cron jobs by default
-
-# Cache configuration (optional)
+# ====================
+# Cache
+# ====================
 caches:
   - name: questimate-cache
     type: redis
     plan: free
+    # Recommended for production:
+    # plan: standard-0  # Or higher based on needs
+    # maxmemory-policy: allkeys-lru
 
-# Disk configuration (if needed)
+# ====================
+# Storage
+# ====================
 disks:
-  - name: questimate-data
+  - name: questimate-storage
     mountPath: /data
     sizeGB: 1
     plan: free
+    # Recommended for production:
+    # plan: standard
+    # sizeGB: 10
+
+# ====================
+# Monitoring & Alerts
+# ====================
+monitors:
+  - name: api-uptime
+    type: http
+    url: https://questimate-api.onrender.com/api/health
+    regions: [us-west, eu-west, ap-southeast]
+    interval: 60
+    timeout: 30
+    
+alerts:
+  - name: api-down
+    type: http
+    condition: response_time > 5000 OR status != 200
+    notify: [email, slack]
+    
+# ====================
+# Security Headers
+# ====================
+headers:
+  - X-Frame-Options: DENY
+  - X-Content-Type-Options: nosniff
+  - X-XSS-Protection: 1; mode=block
+  - Referrer-Policy: strict-origin-when-cross-origin
+  - Content-Security-Policy: default-src 'self'
+  - Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# ====================
+# Rate Limiting
+# ====================
+rateLimits:
+  - name: api-rate-limit
+    path: /api/**
+    limit: 1000
+    period: 1h
+    burst: 100
+    
+# ====================
+# Maintenance Windows
+# ====================
+maintenanceWindows:
+  - day: sunday
+    start: 02:00
+    duration: 1h
+
+# ====================
+# Backup Configuration
+# ====================
+backups:
+  enabled: true
+  schedule: "0 0 * * *"  # Daily at midnight
+  retention: 30d
+
+# ====================
+# Custom Domains (uncomment and configure in production)
+# ====================
+# customDomains:
+#   - name: api.questimate.app
+#     type: apex
+#   - name: www.questimate.app
+#     type: www
+
+# ====================
+# Notes
+# ====================
+# 1. Set sensitive values in Render dashboard
+# 2. Monitor logs: render.com/logs
+# 3. Scale up as needed for production traffic
+# 4. Set up alerts for critical metrics
