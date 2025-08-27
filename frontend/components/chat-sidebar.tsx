@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { MessageCircle, Plus, Upload, FileText, Crown, Clock, BarChart3 } from 'lucide-react'
+import { MessageCircle, Plus, Upload, FileText, Crown, Clock, BarChart3, Menu, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 interface ChatSession {
   id: string
@@ -21,6 +22,7 @@ interface ChatSidebarProps {
   onNewChat: () => void
   onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void
   user: any
+  isMobile?: boolean
 }
 
 export function ChatSidebar({ 
@@ -29,28 +31,48 @@ export function ChatSidebar({
   onSessionSelect, 
   onNewChat, 
   onFileUpload,
-  user 
+  user,
+  isMobile = false
 }: ChatSidebarProps) {
-  return (
-    <div className="w-80 bg-white border-r flex flex-col">
+  const [isOpen, setIsOpen] = useState(false)
+
+  const handleSessionSelect = (sessionId: string) => {
+    onSessionSelect(sessionId)
+    if (isMobile) setIsOpen(false)
+  }
+
+  const handleNewChat = () => {
+    onNewChat()
+    if (isMobile) setIsOpen(false)
+  }
+
+  const SidebarContent = () => (
+    <div className="w-80 lg:w-80 bg-white border-r flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">Chat Sessions</h2>
-          <Badge variant={user.role === 'premium' ? 'default' : 'secondary'}>
-            {user.role === 'premium' ? (
-              <>
-                <Crown className="h-3 w-3 mr-1" />
-                Premium
-              </>
-            ) : (
-              `${user.quotesUsed || 0}/5`
-            )}
-          </Badge>
+      <div className="p-3 lg:p-4 border-b">
+        <div className="flex items-center justify-between mb-3 lg:mb-4">
+          <h2 className="font-semibold text-gray-900 text-sm lg:text-base">Chat Sessions</h2>
+          {isMobile && (
+            <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+          {!isMobile && (
+            <Badge variant={user.role === 'premium' ? 'default' : 'secondary'}>
+              {user.role === 'premium' ? (
+                <>
+                  <Crown className="h-3 w-3 mr-1" />
+                  Premium
+                </>
+              ) : (
+                `${user.quotesUsed || 0}/5`
+              )}
+            </Badge>
+          )}
         </div>
         
         <div className="space-y-2">
-          <Button onClick={onNewChat} className="w-full justify-start">
+          <Button onClick={handleNewChat} className="w-full justify-start h-10 lg:h-9">
             <Plus className="h-4 w-4 mr-2" />
             New Chat
           </Button>
@@ -62,7 +84,7 @@ export function ChatSidebar({
               onChange={onFileUpload}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
-            <Button variant="outline" className="w-full justify-start">
+            <Button variant="outline" className="w-full justify-start h-10 lg:h-9">
               <Upload className="h-4 w-4 mr-2" />
               Upload PDF
             </Button>
@@ -77,8 +99,8 @@ export function ChatSidebar({
             <Button
               key={session.id}
               variant={currentSession === session.id ? 'secondary' : 'ghost'}
-              className="w-full justify-start h-auto p-3"
-              onClick={() => onSessionSelect(session.id)}
+              className="w-full justify-start h-auto p-2 lg:p-3"
+              onClick={() => handleSessionSelect(session.id)}
             >
               <div className="flex items-start gap-3 w-full">
                 <div className="flex-shrink-0 mt-0.5">
@@ -90,7 +112,7 @@ export function ChatSidebar({
                 </div>
                 
                 <div className="flex-1 text-left min-w-0">
-                  <div className="font-medium text-sm truncate">
+                  <div className="font-medium text-xs lg:text-sm truncate">
                     {session.name}
                   </div>
                   
@@ -116,17 +138,18 @@ export function ChatSidebar({
       </ScrollArea>
 
       {/* Footer */}
-      <div className="p-4 border-t space-y-2">
+      <div className="p-3 lg:p-4 border-t space-y-2">
         <Button
           variant="outline"
           size="sm"
-          className="w-full justify-start"
+          className="w-full justify-start h-9"
           onClick={() => {
             if (user.role === 'premium') {
               window.location.href = '/dashboard'
             } else {
               window.location.href = '/dashboard/normal'
             }
+            if (isMobile) setIsOpen(false)
           }}
         >
           <BarChart3 className="h-4 w-4 mr-2" />
@@ -145,5 +168,72 @@ export function ChatSidebar({
         </div>
       </div>
     </div>
+  )
+
+  // Handle mobile sidebar overlay
+  useEffect(() => {
+    if (isOpen && isMobile) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [isOpen, isMobile])
+
+  if (isMobile) {
+    return (
+      <>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="lg:hidden" 
+          onClick={() => setIsOpen(true)}
+        >
+          <Menu className="h-4 w-4" />
+        </Button>
+        
+        {/* Mobile Sidebar Overlay */}
+        {isOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            {/* Backdrop */}
+            <div 
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm" 
+              onClick={() => setIsOpen(false)}
+            />
+            
+            {/* Sidebar */}
+            <div className="fixed left-0 top-0 h-full w-80 max-w-[85vw] bg-white shadow-xl transform transition-transform duration-300 ease-in-out">
+              <SidebarContent />
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
+
+  return <SidebarContent />
+}
+
+// Mobile Sidebar Trigger Component
+export function MobileSidebarTrigger({ 
+  sessions, 
+  currentSession, 
+  onSessionSelect, 
+  onNewChat, 
+  onFileUpload,
+  user 
+}: Omit<ChatSidebarProps, 'isMobile'>) {
+  return (
+    <ChatSidebar
+      sessions={sessions}
+      currentSession={currentSession}
+      onSessionSelect={onSessionSelect}
+      onNewChat={onNewChat}
+      onFileUpload={onFileUpload}
+      user={user}
+      isMobile={true}
+    />
   )
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { paymentMethod, cardData, userEmail, amount = 999 } = await request.json()
+    const { paymentMethod, cardData, userEmail, amount = 99 } = await request.json()
 
     // Simulate payment processing delay
     await new Promise(resolve => setTimeout(resolve, 2000))

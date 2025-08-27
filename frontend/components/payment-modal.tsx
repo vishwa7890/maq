@@ -80,7 +80,7 @@ export function PaymentModal({ isOpen, onClose, onSuccess, userEmail }: PaymentM
               <Check className="h-4 w-4 text-green-500" />
               <span>Advanced dashboard & analytics</span>
             </div>
-            <div className="text-lg font-bold text-blue-600 mt-3">₹999/month</div>
+            <div className="text-lg font-bold text-blue-600 mt-3">₹99/month</div>
           </CardContent>
         </Card>
 
@@ -160,7 +160,7 @@ export function PaymentModal({ isOpen, onClose, onSuccess, userEmail }: PaymentM
                 disabled={processing}
                 className="w-full"
               >
-                {processing ? 'Processing Payment...' : 'Pay ₹999'}
+                {processing ? 'Processing Payment...' : 'Pay ₹99'}
               </Button>
             </div>
           </TabsContent>

@@ -8,16 +8,16 @@ import shutil
 from functools import lru_cache
 from pathlib import Path
 import asyncio
-from typing import List, Dict, Any, Optional, Union
 from datetime import datetime, timedelta
 import httpx
 from fastapi import (
     APIRouter, Depends, HTTPException, Request, 
-    BackgroundTasks, status, UploadFile, File, Body
+    BackgroundTasks, status, UploadFile, File, Body, Query, Header
 )
+from typing import List, Dict, Any, Optional, Union, Tuple
+from pydantic import BaseModel
 from sqlalchemy import func
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
@@ -924,92 +924,87 @@ CRITICAL: Respond ONLY with markdown tables following the system's formatting ru
 
 @router.post("/estimate/uiux", response_model=QuoteResponse)
 async def uiux_estimate(project_details: Dict[str, Any]):
-    """Generate structured UI/UX estimate."""
+    """Generate structured UI/UX estimate with professional formatting."""
     try:
-        # Format the project details into a prompt
-        prompt = f"""
-        Generate a professional UI/UX design proposal with the following details:
+        # Get current date and set quote validity
+        current_date = datetime.now().strftime("%d %b %Y")
+        valid_until = (datetime.now() + timedelta(days=30)).strftime("%d %b %Y")
+        quote_number = f"UI-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:4].upper()}"
         
-        # UI/UX Design Proposal
+        # Get project details with defaults
+        client_name = project_details.get('client_name', '[Client\'s Name]')
+        project_name = project_details.get('project_name', '[Project Title]')
         
-        ## Client Information
-        - **Client Name:** {project_details.get('client_name', "[Client's Name]")}
-        - **Project Name:** {project_details.get('project_name', "[Project Title]")}
-        - **Project Type:** {project_details.get('project_type', 'UI/UX Design')}
-        - **Project Scope:** {project_details.get('project_scope', 'Full UI/UX design for a web application')}
-        
-        ## Cost Breakdown
-        | Description | Amount (INR) |
-        |-------------|-------------:|
-        | Estimated Hours | {project_details.get('estimated_hours', 80)} |
-        | Hourly Rate | ₹{project_details.get('hourly_rate', 2000):,} |
-        | **Subtotal** | **₹{project_details.get('hourly_rate', 2000) * project_details.get('estimated_hours', 80):,}** |
-        | Discount (0%) | ₹0 |
-        | **Total Estimate** | **₹{project_details.get('hourly_rate', 2000) * project_details.get('estimated_hours', 80):,}** |
-        
-        ## Project Timeline
-        - **Start Date:** {project_details.get('start_date', '2025-09-01')}
-        - **End Date:** {project_details.get('end_date', '2025-09-30')}
-        - **Duration:** 4 weeks
-        
-        ## Service Phases
-        | Phase | Deliverables | Timeline | Cost (INR) |
-        |-------|--------------|----------|-----------:|
-        | **Research & Discovery** | User interviews, competitor analysis, user personas | Week 1 | ₹20,000 |
-        | **Wireframing** | Low-fidelity wireframes for key screens | Week 2 | ₹30,000 |
-        | **UI Design** | High-fidelity mockups, style guide, component library | Week 3 | ₹50,000 |
-        | **Prototyping** | Interactive prototype, user flow animations | Week 3-4 | ₹30,000 |
-        | **Testing & Iteration** | Usability testing, feedback incorporation, final tweaks | Week 4 | ₹30,000 |
-        | | **Total** | | **₹160,000** |
-        
-        ## Terms & Conditions
-        - **Payment Terms:** 50% advance, 50% on completion
-        - **Validity:** 30 days from quote date ({(datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')})
-        - **Next Steps:** Schedule kickoff meeting, provide assets
-        - **Notes:** This estimate is valid for 30 days. Additional revisions or scope changes may incur extra costs.
-        
-        Return ONLY valid JSON matching this schema:
-        {{
-            'client_name': str, 
-            'project_name': str,
-            'project_type': str,
-            'project_scope': str,
-            'estimated_hours': int,
-            'hourly_rate': float,
-            'start_date': str,
-            'end_date': str,
-            'phases': [
-                {{
-                    'name': str,
-                    'deliverables': List[str],
-                    'timeline': str,
-                    'cost': float
-                }}
-            ],
-            'payment_terms': str,
-            'notes': str
-        }}
-        """
-        
-        response_text = await _call_llm(prompt)
-        
-        try:
-            quote_data = json.loads(response_text)
-            # Calculate total if not provided
-            if "total" not in quote_data:
-                quote_data["total"] = sum(quote_data["pricing"].values())
-            return QuoteResponse(**quote_data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse quote response: {response_text}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to parse quote response: {str(e)}")
+        # Format the project details into a professional quote
+        quote_content = f"""
+## UI/UX Design Quote
+
+### Summary
+- Client: {client_name}
+- Project: {project_name}
+- Date: {current_date}
+- Quote #: {quote_number}
+
+### Itemized Estimate
+| Item | Qty/Hours | Rate (₹) | Subtotal (₹) |
+|---|---:|---:|---:|
+| Research & Discovery | 40 | 2,000 | 80,000 |
+| Wireframing | 30 | 2,000 | 60,000 |
+| UI Design | 50 | 2,000 | 100,000 |
+| Prototyping | 30 | 2,000 | 60,000 |
+| Testing & Iteration | 30 | 2,000 | 60,000 |
+| | | **Subtotal** | **360,000** |
+
+### Discounts
+- Standard 5% discount for projects over 100 hours: (₹18,000)
+
+### Totals
+- Subtotal: ₹360,000
+- Discount: (₹18,000)
+- Grand Total: ₹342,000
+
+### Timeline and Payment Terms
+- Timeline: 01 Sep 2025 – 30 Sep 2025 (4 weeks)
+- Quote Valid Until: {valid_until}
+- Payment Terms: 50% advance, 50% on completion
+- Hourly Rate: ₹2,000/hour
+
+### Next Steps
+1. Review and approve this quotation
+2. Sign the NDA and service agreement
+3. Schedule project kickoff meeting
+4. Submit 50% advance payment to begin work
+"""
+
+        # Return the formatted quote
+        return QuoteResponse(
+            client_name=client_name,
+            project_name=project_name,
+            date=current_date,
+            scope_of_work={
+                'Research & Discovery': ['User interviews', 'Competitive analysis', 'User personas'],
+                'Wireframing': ['Low-fidelity wireframes for all screens'],
+                'UI Design': ['High-fidelity mockups', 'Visual style guide'],
+                'Prototyping': ['Interactive clickable prototype'],
+                'Testing & Iteration': ['Usability testing', 'Revisions', 'Final polish']
+            },
+            timeline="01 Sep 2025 – 30 Sep 2025 (4 weeks)",
+            pricing={
+                'Research & Discovery': 80000,
+                'Wireframing': 60000,
+                'UI Design': 100000,
+                'Prototyping': 60000,
+                'Testing & Iteration': 60000
+            },
+            total=342000,
+            notes=f"Quote valid until {valid_until}",
+            payment_terms="50% advance, 50% on completion"
+        )
     except Exception as e:
-        await db.rollback()
-        logger.error(f"Error creating chat session: {str(e)}")
+        logger.error(f"Error generating UI/UX estimate: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create chat session"
+            detail="Failed to generate UI/UX estimate"
         )
 
 @router.get("/sessions/", response_model=List[ChatSessionResponse])
@@ -1325,27 +1320,136 @@ async def create_message(
             detail="Failed to create message"
         )
 
+class BusinessChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None  # For maintaining conversation context
+    context: Optional[Dict[str, Any]] = None  # Additional context if needed
+
 # Now initialize RL Optimizer after SYSTEM_PROMPT is defined
 try:
     from app.rl_optimizer import QuoteGenerator, QuoteInteractionTracker
     rl_optimizer = QuoteGenerator(SYSTEM_PROMPT)
+    interaction_tracker = QuoteInteractionTracker()
     logger.info("RL Optimizer initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize RL Optimizer: {e}")
+except ImportError as e:
+    logger.warning(f"Could not initialize RL Optimizer: {e}")
     rl_optimizer = None
-    SYSTEM_PROMPT = """You are Lumina Quo AI, an expert in business quotes and estimates. Your goal is to provide accurate, relevant, and actionable business advice with properly formatted tables.
-    
-**MANDATORY TABLE : only for quotation requests otherwise ignore**
+    interaction_tracker = None
 
-| Section         | Details         |
-|-----------------|----------------|
-| **Client Name** | [Client's Name] |
-| **Project Type** | [Type of Project] |
-| **Estimated Hours** | [Number] |
-| **Rate** | [Rate per hour] |
-| **Total Estimate** | [Calculated Total] |
-| **Timeline** | [Estimated Timeline] |
-| **Next Steps** | [Recommended Actions] |"""
+# In-memory store for chat sessions (in production, use Redis or database)
+chat_sessions = {}
+
+# Business chat endpoint with continuous conversation support
+@router.post("/business-chat", response_model=Dict[str, Any])
+async def business_chat(
+    request: BusinessChatRequest,
+    x_session_id: Optional[str] = Header(None, alias="X-Session-ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Business-focused chat endpoint with continuous conversation support.
+    Maintains chat history using session ID and only processes business-related queries.
+    """
+    try:
+        # Get or create session
+        session_id = request.session_id or x_session_id or str(uuid.uuid4())
+        
+        # Initialize session if it doesn't exist
+        if session_id not in chat_sessions:
+            chat_sessions[session_id] = {
+                'history': [],
+                'created_at': datetime.utcnow().isoformat(),
+                'last_activity': datetime.utcnow().isoformat()
+            }
+        
+        session = chat_sessions[session_id]
+        session['last_activity'] = datetime.utcnow().isoformat()
+        
+        # Check if query is business-related
+        if not is_business_related(request.message):
+            return {
+                "content": "I'm designed to assist with business-related queries. "
+                          "Please ask me about business, project estimation, or related topics.",
+                "is_business_related": False,
+                "session_id": session_id,
+                "metadata": {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "query_type": "non_business"
+                }
+            }
+        
+        # Add user message to history
+        user_message = {"role": "user", "content": request.message}
+        session['history'].append(user_message)
+        
+        # Prepare chat request with history
+        chat_request = ChatRequest(
+            role="user",
+            content=request.message,
+            chat_id=session_id,
+            history=session['history'][-10:]  # Keep last 10 messages for context
+        )
+        
+        # Process business query using the main chat function
+        response = await chat(chat_request, db, current_user)
+        
+        # Add assistant response to history
+        if isinstance(response, dict) and 'content' in response:
+            assistant_message = {"role": "assistant", "content": response['content']}
+            session['history'].append(assistant_message)
+            
+            # Clean up old sessions (optional, for memory management)
+            cleanup_inactive_sessions()
+            
+            return {
+                "content": response['content'],
+                "is_business_related": True,
+                "session_id": session_id,
+                "metadata": {
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "history_length": len(session['history'])
+                }
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unexpected response format from chat service"
+            )
+        
+    except Exception as e:
+        logger.error(f"Error in business chat: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing your request"
+        )
+
+def cleanup_inactive_sessions(max_inactive_minutes: int = 60, max_sessions: int = 1000):
+    """Clean up inactive chat sessions to manage memory usage"""
+    global chat_sessions
+    
+    # If we have too many sessions, remove the oldest ones first
+    if len(chat_sessions) > max_sessions:
+        # Sort sessions by last activity and keep only the most recent ones
+        sorted_sessions = sorted(
+            chat_sessions.items(),
+            key=lambda x: x[1]['last_activity'],
+            reverse=True
+        )
+        chat_sessions = dict(sorted_sessions[:max_sessions])
+    
+    # Remove sessions that have been inactive for too long
+    now = datetime.utcnow()
+    inactive_session_ids = [
+        session_id for session_id, session in chat_sessions.items()
+        if (now - datetime.fromisoformat(session['last_activity'])).total_seconds() > max_inactive_minutes * 60
+    ]
+    
+    for session_id in inactive_session_ids:
+        del chat_sessions[session_id]
+    
+    if inactive_session_ids:
+        logger.info(f"Cleaned up {len(inactive_session_ids)} inactive chat sessions")
 
 # Initialize the quote generator if not already done
 if 'quote_generator' not in globals():
@@ -1630,80 +1734,19 @@ async def get_interaction_analytics():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Feedback model
+# Chat request models
+class ChatRequest(BaseModel):
+    role: str = "user"
+    content: str
+    chat_id: Optional[str] = None  # Session UUID to link messages to sessions
+    history: List[Dict[str, str]] = []
+
 class FeedbackRequest(BaseModel):
     message_id: str
-    feedback: str  # 'positive' or 'negative'
+    feedback: str
     session_id: Optional[str] = None
     user_query: Optional[str] = None
     assistant_response: Optional[str] = None
-
-# Feedback endpoint
-@router.post("/feedback")
-async def submit_feedback(
-    feedback: FeedbackRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Handle user feedback on assistant responses for reinforcement learning.
-    """
-    try:
-        if not rl_optimizer:
-            logger.warning("RL Optimizer not available")
-            return {"status": "error", "message": "RL Optimizer not available"}
-
-        # Log the feedback
-        logger.info(
-            f"Feedback received - Message ID: {feedback.message_id}, "
-            f"Type: {feedback.feedback}, "
-            f"Session: {feedback.session_id}"
-        )
-
-        # Track the interaction in RL optimizer
-        interaction_type = "download" if feedback.feedback == "positive" else "ignore"
-        
-        # Store additional metadata
-        metadata = {
-            "user_id": str(current_user.id) if current_user else "anonymous",
-            "session_id": feedback.session_id,
-            "user_query": feedback.user_query,
-            "assistant_response": feedback.assistant_response
-        }
-        
-        # Track the interaction
-        rl_optimizer.track_quote_interaction(
-            quote_id=feedback.message_id,
-            interaction_type=interaction_type,
-            metadata=metadata
-        )
-
-        # Update the database with feedback (optional)
-        try:
-            # Find the message in the database and update its feedback
-            result = await db.execute(
-                select(ChatMessageORM)
-                .where(ChatMessageORM.message_id == feedback.message_id)
-            )
-            message = result.scalars().first()
-            
-            if message:
-                # Update feedback in the database
-                message.feedback = feedback.feedback
-                message.updated_at = datetime.utcnow()
-                await db.commit()
-        except Exception as db_error:
-            logger.error(f"Error updating feedback in database: {db_error}")
-            # Don't fail the request if DB update fails
-
-        return {"status": "success", "message": "Feedback received"}
-        
-    except Exception as e:
-        logger.error(f"Error processing feedback: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process feedback"
-        )
 
 # Chat configuration
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
@@ -1718,12 +1761,10 @@ async def get_recent_estimates(limit: int = 5):
     """Get recent estimates from the cache."""
     return {"estimates": RECENT_ESTIMATES[-limit:]}
 
-from fastapi import UploadFile, File, Body, HTTPException, status
+from fastapi import UploadFile, File, HTTPException, status
 from pathlib import Path
 import shutil
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, List, Union
-from app.rl_optimizer import QuoteGenerator, QuoteInteractionTracker
+from typing import List
 
 @router.post("/upload")
 async def upload_files(
