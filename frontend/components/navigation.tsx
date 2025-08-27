@@ -15,7 +15,7 @@ export function Navigation() {
   const router = useRouter()
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const fetchUser = async () => {
       try {
         const userData = await api.me()
         setUser(userData)
@@ -25,7 +25,30 @@ export function Navigation() {
         setIsLoading(false)
       }
     }
-    checkAuth()
+
+    // Initial fetch
+    fetchUser()
+
+    // Listen for global user updates (e.g., after quote generation or logout)
+    const onUserUpdated = () => {
+      // set loading skeleton briefly for visual feedback
+      setIsLoading(true)
+      fetchUser()
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('user-updated', onUserUpdated)
+      // Also refresh when the tab becomes visible again
+      const onVisibility = () => {
+        if (document.visibilityState === 'visible') {
+          fetchUser()
+        }
+      }
+      document.addEventListener('visibilitychange', onVisibility)
+      return () => {
+        window.removeEventListener('user-updated', onUserUpdated)
+        document.removeEventListener('visibilitychange', onVisibility)
+      }
+    }
   }, [])
 
   const handleLogout = async () => {

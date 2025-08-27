@@ -38,10 +38,17 @@ export async function POST(request: NextRequest) {
     const data = await res.json()
     const response = NextResponse.json(data, { status: res.status })
 
-    // Forward any set-cookie headers from the backend
-    const setCookie = res.headers.get('set-cookie')
-    if (setCookie) {
-      response.headers.set('set-cookie', setCookie)
+    // Extract access_token from backend Set-Cookie and set it on Next.js domain
+    const setCookie = res.headers.get('set-cookie') || ''
+    const match = /access_token=([^;]+);/i.exec(setCookie)
+    if (match && match[1]) {
+      response.cookies.set('access_token', decodeURIComponent(match[1]), {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        // secure: true,
+        maxAge: 3600,
+      })
     }
 
     return response

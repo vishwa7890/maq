@@ -163,13 +163,16 @@ async def register(
         access_token = create_access_token({"sub": db_user.username, "user_id": db_user.id})
         
         # Set the access token as an HTTP-only cookie
+        # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
+        # In production over HTTPS, set secure=True.
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
             max_age=3600,  # 1 hour
-            samesite="lax",
+            samesite="none",
             secure=False,  # Set to True in production with HTTPS
+            path="/",
         )
         
         # Return success response with redirect URL
@@ -225,13 +228,16 @@ async def login(
     access_token = create_access_token({"sub": user.username, "user_id": user.id})
     
     # Set the access token as an HTTP-only cookie
+    # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
+    # In production over HTTPS, set secure=True.
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         max_age=3600,  # 1 hour
-        samesite="lax",
+        samesite="none",
         secure=False,  # Set to True in production with HTTPS
+        path="/",
     )
     
     # Return success response with redirect URL
@@ -243,8 +249,9 @@ async def logout(response: Response):
     response.delete_cookie(
         key="access_token",
         httponly=True,
-        samesite="lax",
+        samesite="none",
         secure=False,  # Set to True in production with HTTPS
+        path="/",
     )
     return {"message": "Successfully logged out", "redirect": "/login"}
 
@@ -330,8 +337,8 @@ async def generate_quote(
             raise HTTPException(status_code=400, detail="Prompt is required")
         
         # Check quote limits for normal users
-        user_role = getattr(current_user, 'role', 'normal')
-        quotes_used = getattr(current_user, 'quotes_used', 0)
+        user_role = current_user.role or 'normal'
+        quotes_used = current_user.quotes_used or 0
         
         if user_role == 'normal' and quotes_used >= 5:
             return JSONResponse(
@@ -366,10 +373,15 @@ async def generate_quote(
         
         # Increment quotes_used for normal users
         if user_role == 'normal':
-            current_user.quotes_used = quotes_used + 1
-            db.add(current_user)
-            await db.commit()
-            await db.refresh(current_user)
+            try:
+                current_user.quotes_used = (current_user.quotes_used or 0) + 1
+                db.add(current_user)
+                await db.commit()
+                await db.refresh(current_user)
+            except Exception as e:
+                logger.error(f"Failed to update quotes_used: {str(e)}")
+                await db.rollback()
+                raise HTTPException(status_code=500, detail="Failed to update quote usage")
         
         return {
             "success": True,
@@ -377,7 +389,7 @@ async def generate_quote(
             "quote": quote_data,
             "user_info": {
                 "role": user_role,
-                "quotes_used": getattr(current_user, 'quotes_used', 0),
+                "quotes_used": current_user.quotes_used or 0,
                 "quotes_remaining": 5 - getattr(current_user, 'quotes_used', 0) if user_role == 'normal' else "unlimited"
             }
         }

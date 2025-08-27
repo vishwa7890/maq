@@ -18,6 +18,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 
+interface User {
+  id?: number
+  username?: string
+  email?: string
+  role: 'normal' | 'premium'
+  quotes_used: number
+  quotesUsed?: number
+}
+
 interface Message {
   id: string
   type: 'user' | 'assistant'
@@ -35,7 +44,7 @@ interface ChatSession {
 }
 
 export default function ChatPage() {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [currentSession, setCurrentSession] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -126,7 +135,11 @@ export default function ChatPage() {
     const init = async () => {
       try {
         const me = await api.me()
-        setUser(me)
+        setUser({
+          ...me,
+          quotes_used: Number(me?.quotes_used || me?.quotesUsed || 0), // Ensure quotes_used is a number
+          role: (me?.role || 'normal') as 'normal' | 'premium' // Ensure role has a default value
+        } as User)
       } catch {
         router.push('/auth')
         return
@@ -280,6 +293,15 @@ export default function ChatPage() {
       const data = await sendChatToBackend(userMessage.content, currentSession)
       const replyText: string = data?.content || 'No response.'
       const backendSessionId: string = data?.session_uuid || currentSession
+      
+      // Update user quota if response contains user info
+      if (data?.user_info) {
+        setUser((prev: any) => ({
+          ...prev,
+          quotes_used: Number(data.user_info.quotes_used || prev.quotes_used || 0)
+        }))
+      }
+      
       // If backend returned a different session id (newly created), switch to it
       if (backendSessionId !== currentSession) {
         setCurrentSession(backendSessionId)
@@ -297,6 +319,16 @@ export default function ChatPage() {
           : session
       ))
     } catch (e: any) {
+      // Check if error is quota exceeded
+      if (e?.response?.status === 429 || (e?.error === 'Quote limit reached')) {
+        toast({
+          variant: 'destructive',
+          title: 'Quote limit reached',
+          description: 'You\'ve used all 5 free quotes. Upgrade to Premium for unlimited quotes.'
+        })
+        return
+      }
+      
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',

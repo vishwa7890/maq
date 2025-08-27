@@ -540,7 +540,7 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
                         last_error = f"Rate limited (429). Retrying in {retry_after}s."
                         logger.warning(f"Attempt {attempt + 1}/{max_retries}: {last_error}")
                         if attempt == max_retries - 1:
-                            return "I apologize, but the AI service is receiving too many requests right now. Please try again shortly."
+                            return "Too many people are generating queries so please try again later."
                         await asyncio.sleep(retry_after)
                         retry_delay = min(retry_delay * 2, 10)
                         continue
@@ -720,6 +720,30 @@ async def chat(
                 }
             }
         
+        # For business-related queries, enforce free user quote limit (5 per month)
+        try:
+            if is_business and (current_user.role or 'normal') == 'normal':
+                quotes_used = int(current_user.quotes_used or 0)
+                if quotes_used >= 5:
+                    logger.info(f"User {current_user.id} exceeded free quote limit: {quotes_used}/5")
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail={
+                            "error": "Quote limit reached",
+                            "message": "You've reached your monthly limit of 5 quotes. Upgrade to Premium for unlimited quotes.",
+                            "upgrade_required": True,
+                            "current_plan": "normal",
+                            "quotes_used": quotes_used,
+                            "quotes_limit": 5
+                        }
+                    )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error during business limit check: {e}")
+            # Continue; fallback to process normally
+
         try:
             # Save user message to database
             user_message = ChatMessageORM(
@@ -745,9 +769,9 @@ async def chat(
 
 | Section         | Details         |
 |-----------------|----------------|
-| **Client Name** | [Client's Name] |
-| **Project Name**| [Project Title] |
-| **Date**        | """ + today + """ |
+| Client Name     | [Client's Name] |
+| Project Name    | [Project Title] |
+| Date            | """ + today + """ |
 
 Please provide the following details to generate your quotation:
 1. Project description
@@ -770,7 +794,17 @@ Type your response below and I'll create a detailed quotation for you."""
                     message_id=message_id  # Store the message ID in the database
                 )
                 db.add(assistant_message)
+                
+                # Increment quotes_used for normal users on business-related successful response
+                if (current_user.role or 'normal') == 'normal':
+                    try:
+                        current_user.quotes_used = int(current_user.quotes_used or 0) + 1
+                        db.add(current_user)
+                    except Exception as inc_e:
+                        logger.error(f"Failed to increment quotes_used: {inc_e}")
+
                 await db.commit()
+                await db.refresh(current_user)
                 
                 return {
                     "quote_id": quote_id,
@@ -781,6 +815,12 @@ Type your response below and I'll create a detailed quotation for you."""
                         "business_related": True,
                         "error": False,
                         "timestamp": datetime.utcnow().isoformat()
+                    },
+                    "user_info": {
+                        "role": current_user.role or 'normal',
+                        "quotes_used": int(current_user.quotes_used or 0),
+                        "quotes_limit": 5,
+                        "quotes_remaining": 5 - int(current_user.quotes_used or 0) if (current_user.role or 'normal') == 'normal' else None
                     }
                 }
             
@@ -836,7 +876,17 @@ CRITICAL: Respond ONLY with markdown tables following the system's formatting ru
                     session_id=chat_session.id  # Same session_id for conversation thread
                 )
                 db.add(assistant_message)
+                
+                # Increment quotes_used for normal users on business-related successful response
+                if (current_user.role or 'normal') == 'normal':
+                    try:
+                        current_user.quotes_used = int(current_user.quotes_used or 0) + 1
+                        db.add(current_user)
+                    except Exception as inc_e:
+                        logger.error(f"Failed to increment quotes_used: {inc_e}")
+
                 await db.commit()
+                await db.refresh(current_user)
                 
                 # Ensure we always return a valid string response
                 response = str(response or "").strip()
@@ -859,6 +909,12 @@ CRITICAL: Respond ONLY with markdown tables following the system's formatting ru
                         "context_used": bool(knowledge_graph.get_business_context(request.content) and knowledge_graph.get_business_context(request.content) != "No relevant business context found"),
                         "documents_used": bool(get_rag_context(request.content, max_results=3) and get_rag_context(request.content, max_results=3) != "No relevant documents found"),
                         "timestamp": datetime.utcnow().isoformat()
+                    },
+                    "user_info": {
+                        "role": current_user.role or 'normal',
+                        "quotes_used": int(current_user.quotes_used or 0),
+                        "quotes_limit": 5,
+                        "quotes_remaining": 5 - int(current_user.quotes_used or 0) if (current_user.role or 'normal') == 'normal' else None
                     }
                 }
                 
@@ -910,7 +966,7 @@ CRITICAL: Respond ONLY with markdown tables following the system's formatting ru
         
     except Exception as e:
         logger.error(f"Chat error: {str(e)}", exc_info=True)
-        error_message = "I apologize, but an unexpected error occurred while processing your request."
+        error_message = "REACHED YOUR QUOTES LIMIT."
         return {
             "quote_id": str(uuid.uuid4()),
             "content": error_message,

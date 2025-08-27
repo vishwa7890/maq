@@ -5,6 +5,8 @@ export const API_BASE =
 
 export type FetchOptions = RequestInit & {
   json?: any
+  // When true, bypasses the in-memory GET cache and forces a fresh request
+  noCache?: boolean
 }
 
 const cache = new Map();
@@ -16,9 +18,17 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
   const isInternalApi = path.startsWith('/api/')
   const url = isExternal ? path : isInternalApi ? path : `${API_BASE}${path}`
   const { json, headers, ...rest } = opts
+  // Identify auth endpoints to avoid recursive logout on expected 401s
+  const isAuthMe = path === '/api/auth/me' || path.endsWith('/auth/me')
+  const isAuthEndpoint =
+    path.startsWith('/api/auth/') ||
+    path.includes('/auth/login') ||
+    path.includes('/auth/logout') ||
+    path.includes('/auth/register') ||
+    path.includes('/auth/me')
   
-  // Check cache for GET requests
-  if (rest.method === 'GET' || !rest.method) {
+  // Check cache for GET requests unless explicitly disabled
+  if ((rest.method === 'GET' || !rest.method) && !opts.noCache) {
     const cached = cache.get(url);
     if (cached && Date.now() - cached.timestamp < CACHE_TIME) {
       return cached.data;
@@ -38,6 +48,11 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
     body: json ? JSON.stringify(json) : opts.body,
   }
 
+  // If noCache, ensure we purge any stale entry before fetching
+  if (opts.noCache) {
+    cache.delete(url)
+  }
+
   const res = await fetch(url, fetchOptions)
 
   const contentType = res.headers.get('content-type') || ''
@@ -50,10 +65,12 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
     // Handle specific error cases
     if (res.status === 401) {
       message = 'Your session has expired. Please log in again.'
-      shouldLogout = true
+      // Do not auto-logout for auth endpoints like /auth/me where 401 is expected
+      shouldLogout = !isAuthMe && !isAuthEndpoint
     } else if (res.status === 403) {
       message = 'You do not have permission to perform this action.'
-      shouldLogout = true
+      // Avoid recursive logout for auth routes
+      shouldLogout = !isAuthEndpoint
     } else if (typeof data === 'string') {
       message = data
     } else if (data) {
@@ -75,6 +92,11 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
     throw error
   }
 
+  // Populate cache for GET responses (only when not disabled)
+  if ((rest.method === 'GET' || !rest.method) && !opts.noCache) {
+    cache.set(url, { data, timestamp: Date.now() })
+  }
+
   return data
 }
 
@@ -84,15 +106,45 @@ export const api = {
     apiFetch('/api/auth/login', { method: 'POST', json: payload }),
   register: (payload: { username: string; email: string; password: string; phone_number?: string; phone?: string; role?: 'normal' | 'premium' }) =>
     apiFetch('/api/auth/register', { method: 'POST', json: payload }),
-  me: () => apiFetch('/api/auth/me', { method: 'GET' }),
-  generateQuote: (payload: any) => apiFetch('/api/quotes/generate', { method: 'POST', json: payload }),
-  logout: () => apiFetch('/api/auth/logout', { method: 'POST' }),
+  // Always bypass cache for user info to keep usage counts fresh
+  me: () => apiFetch('/api/auth/me', { method: 'GET', noCache: true }),
+  generateQuote: async (payload: any) => {
+    const result = await apiFetch('/api/quotes/generate', { method: 'POST', json: payload })
+    // Invalidate user info cache and notify listeners so UI can refresh counts
+    try {
+      cache.delete('/api/auth/me')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('user-updated'))
+      }
+    } catch {}
+    return result
+  },
+  logout: async () => {
+    const result = await apiFetch('/api/auth/logout', { method: 'POST' })
+    try {
+      cache.delete('/api/auth/me')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('user-updated'))
+      }
+    } catch {}
+    return result
+  },
   // Chat APIs (proxying to backend via Next.js API routes)
   listChatSessions: () => apiFetch('/api/chat/sessions', { method: 'GET' }),
   createChatSession: (payload: { title?: string; metadata?: any }) =>
     apiFetch('/api/chat/sessions', { method: 'POST', json: payload }),
   getSessionMessages: (session_uuid: string) =>
     apiFetch(`/api/chat/sessions/${encodeURIComponent(session_uuid)}/messages`, { method: 'GET' }),
-  sendChat: (payload: { content: string; chat_id?: string; role?: 'user' | 'assistant' }) =>
-    apiFetch('/api/chat/chat', { method: 'POST', json: payload }),
+  sendChat: async (payload: { content: string; chat_id?: string; role?: 'user' | 'assistant' }) => {
+    const result = await apiFetch('/api/chat/chat', { method: 'POST', json: payload })
+    try {
+      if (result && result.user_info) {
+        cache.delete('/api/auth/me')
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('user-updated'))
+        }
+      }
+    } catch {}
+    return result
+  },
 }
