@@ -4,8 +4,6 @@
 # Global settings
 defaults:
   env: python
-  python:
-    pythonVersion: "3.10.8"
   envVars:
     - key: PYTHONUNBUFFERED
       value: "1"
@@ -38,11 +36,12 @@ defaults:
     - key: MAX_RECENT_ESTIMATES
       value: "10"
 
-# Database service
+# Web service
 services:
   - type: web
     name: questimate-api
     env: python
+    pythonVersion: 3.10.8   # ✅ Explicitly set Python version
     buildCommand: |
       python --version
       pip install --upgrade pip
