@@ -14,7 +14,7 @@ services:
     buildCommand: |
       pip install -r requirements.txt
       python -m pip install --upgrade pip
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: "3.10.8"
