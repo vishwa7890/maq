@@ -10,10 +10,24 @@ services:
   - type: web
     name: questimate-api
     env: python
+    pythonVersion: "3.10.8"
+    buildCommand: |
+      pip install -r requirements.txt
+      python -m pip install --upgrade pip
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4
     envVars:
       - key: PYTHON_VERSION
         value: "3.10.8"
-    # ... rest of your deployment config ...
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: PYTHONPATH
+        value: "/opt/render/project/src"
+    plan: free
+    numInstances: 1
+    healthCheckPath: /api/health
+    autoDeploy: true
 
   
 # ====================
@@ -148,6 +162,7 @@ databases:
     databaseName: questimate
     user: questimate_user
     plan: free  # Upgrade for production
+    ipAllowList: []  # Allow all IPs (restrict in production)
     # Recommended for production:
     # plan: standard-0  # Or higher based on needs
     # region: oregon

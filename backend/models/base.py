@@ -11,40 +11,59 @@ from pathlib import Path
 import logging
 from sqlalchemy.exc import SQLAlchemyError
 from tenacity import retry, stop_after_attempt, wait_exponential
+import urllib.parse
 
 logger = logging.getLogger(__name__)
 
-# Get database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    # Try to construct from individual components if DATABASE_URL is not set
+def get_database_url() -> str:
+    """Get database URL from environment with proper formatting."""
+    # First try to get the direct DATABASE_URL
+    db_url = os.getenv("DATABASE_URL")
+    
+    if db_url:
+        # Handle Render's PostgreSQL connection string format
+        if db_url.startswith('postgres://'):
+            db_url = db_url.replace('postgres://', 'postgresql+asyncpg://', 1)
+        return db_url
+    
+    # Fall back to individual components
     db_user = os.getenv("POSTGRES_USER")
     db_password = os.getenv("POSTGRES_PASSWORD")
     db_host = os.getenv("POSTGRES_HOST")
-    db_port = os.getenv("POSTGRES_PORT")
+    db_port = os.getenv("POSTGRES_PORT", "5432")
     db_name = os.getenv("POSTGRES_DB")
     
-    if all([db_user, db_password, db_host, db_port, db_name]):
-        DATABASE_URL = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-    else:
-        raise ValueError("Database configuration is incomplete. Set either DATABASE_URL or all POSTGRES_* environment variables")
+    if all([db_user, db_password, db_host, db_name]):
+        # URL encode the password to handle special characters
+        safe_password = urllib.parse.quote_plus(db_password)
+        return f"postgresql+asyncpg://{db_user}:{safe_password}@{db_host}:{db_port}/{db_name}"
+    
+    raise ValueError(
+        "Database configuration is incomplete. "
+        "Set either DATABASE_URL or all POSTGRES_* environment variables"
+    )
 
-# Convert postgres:// to postgresql+asyncpg:// for async support
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
-
+# Get the database URL
+DATABASE_URL = get_database_url()
 logger.info(f"Using database: {DATABASE_URL.split('@')[-1]}")
 
 # Create SQLAlchemy engine and session factory with connection pooling
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True,
+    echo=True,  # Set to False in production for better performance
     future=True,
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800
+    pool_pre_ping=True,  # Enable connection health checks
+    pool_size=5,        # Size of the connection pool
+    max_overflow=10,    # Max connections that can be created beyond pool_size
+    pool_timeout=30,    # Seconds to wait before giving up on getting a connection
+    pool_recycle=300,   # Recycle connections after 5 minutes
+    connect_args={
+        'command_timeout': 10,  # Timeout for connection attempts
+        'server_settings': {
+            'application_name': 'quotemaster_api',
+            'timezone': 'UTC'
+        }
+    }
 )
 
 async_session_maker = sessionmaker(
