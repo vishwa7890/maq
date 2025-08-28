@@ -102,6 +102,7 @@ app.add_middleware(
 
 # Initialize database tables on startup
 from tenacity import retry, stop_after_attempt, wait_exponential
+from models.base import Base, engine, async_session_maker
 
 @retry(
     stop=stop_after_attempt(3),
@@ -110,8 +111,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 )
 async def startup_db():
     """Initialize database tables on startup with retry logic."""
-    from models.base import engine, Base, async_session_maker
-    
     try:
         # Test the connection first
         async with async_session_maker() as session:
@@ -127,6 +126,11 @@ async def startup_db():
         logger.error(f"Database connection error: {str(e)}")
         logger.error(f"Using database URL: {os.getenv('DATABASE_URL')}")
         raise
+
+# Add startup event handler
+@app.on_event("startup")
+async def on_startup():
+    await startup_db()
 
 # Use the get_db dependency from models.base
 
