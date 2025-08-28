@@ -1,20 +1,19 @@
 [build]
   command = "npm run build"
   publish = ".next"
-  functions = "out_functions"
 
 [build.environment]
+  NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NEXT_USE_NETLIFY_EDGE = "true"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Required for Next.js 13+ with the App Router
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["@netlify/plugin-nextjs"]
 
-# Required for Next.js image optimization
+# Image optimization
 [[redirects]]
   from = "/_next/image"
   to = "/.netlify/builders/_next/image"
