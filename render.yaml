@@ -45,6 +45,26 @@ envVars:
     fromDatabase:
       name: questimate-db
       property: connectionString
+  - key: POSTGRES_DB
+    fromDatabase:
+      name: questimate-db
+      property: databaseName
+  - key: POSTGRES_USER
+    fromDatabase:
+      name: questimate-db
+      property: user
+  - key: POSTGRES_PASSWORD
+    fromDatabase:
+      name: questimate-db
+      property: password
+  - key: POSTGRES_HOST
+    fromDatabase:
+      name: questimate-db
+      property: host
+  - key: POSTGRES_PORT
+    fromDatabase:
+      name: questimate-db
+      property: port
   
   # Security
   - key: SECRET_KEY
