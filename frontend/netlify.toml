@@ -1,21 +1,9 @@
 [build]
   command = "npm run build"
-  publish = ".next"
-
-[build.environment]
-  NETLIFY_NEXT_PLUGIN_SKIP = "true"
-  NEXT_USE_NETLIFY_EDGE = "true"
+  publish = "public"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@netlify/plugin-nextjs"]
-
-# Image optimization
-[[redirects]]
-  from = "/_next/image"
-  to = "/.netlify/builders/_next/image"
-  status = 200
-  force = true

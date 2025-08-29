@@ -15,6 +15,7 @@ networkx==3.2.1
 SQLAlchemy==2.0.27
 alembic==1.13.1
 asyncpg==0.29.0
+psycopg2-binary==2.9.9  # Required for SQLAlchemy asyncpg dialect
 sqlalchemy[asyncio]==2.0.27
 
 # PDF Processing
