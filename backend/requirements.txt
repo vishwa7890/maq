@@ -3,6 +3,7 @@ PyJWT==2.8.0
 uvicorn[standard]==0.29.0
 faiss-cpu==1.7.4
 sentence-transformers==2.6.1
+asyncpg==0.29.0
 pydantic==2.7.1
 python-dotenv==1.0.1
 numpy==1.26.4
@@ -10,13 +11,6 @@ pandas==2.2.1
 scikit-learn==1.4.0
 transformers==4.38.2
 networkx==3.2.1
-
-# Database
-SQLAlchemy==2.0.27
-alembic==1.13.1
-asyncpg==0.29.0
-psycopg2-binary==2.9.9  # Required for SQLAlchemy asyncpg dialect
-sqlalchemy[asyncio]==2.0.27
 
 # PDF Processing
 pdfplumber==0.10.3
@@ -28,11 +22,12 @@ python-Levenshtein==0.23.0
 markdown==3.5.2
 
 # Security
-bcrypt==4.1.2
+bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 
 # Utils
+python-dotenv==1.0.1
+pydantic==2.7.1
 pydantic-settings==2.2.1
 tqdm==4.66.1
-tenacity==8.2.3  # For retry logic

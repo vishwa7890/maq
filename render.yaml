@@ -10,25 +10,10 @@ services:
   - type: web
     name: questimate-api
     env: python
-    pythonVersion: "3.10.8"
-    buildCommand: |
-      python -m pip install --upgrade pip
-      pip install --no-cache-dir -r requirements.txt
-      pip install psycopg2-binary
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: "3.10.8"
-      - key: PYTHONUNBUFFERED
-        value: "1"
-      - key: PYTHONDONTWRITEBYTECODE
-        value: "1"
-      - key: PYTHONPATH
-        value: "/opt/render/project/src"
-    plan: free
-    numInstances: 1
-    healthCheckPath: /api/health
-    autoDeploy: true
+    # ... rest of your deployment config ...
 
   
 # ====================
@@ -60,26 +45,6 @@ envVars:
     fromDatabase:
       name: questimate-db
       property: connectionString
-  - key: POSTGRES_DB
-    fromDatabase:
-      name: questimate-db
-      property: databaseName
-  - key: POSTGRES_USER
-    fromDatabase:
-      name: questimate-db
-      property: user
-  - key: POSTGRES_PASSWORD
-    fromDatabase:
-      name: questimate-db
-      property: password
-  - key: POSTGRES_HOST
-    fromDatabase:
-      name: questimate-db
-      property: host
-  - key: POSTGRES_PORT
-    fromDatabase:
-      name: questimate-db
-      property: port
   
   # Security
   - key: SECRET_KEY
@@ -163,7 +128,6 @@ databases:
     databaseName: questimate
     user: questimate_user
     plan: free  # Upgrade for production
-    ipAllowList: []  # Allow all IPs (restrict in production)
     # Recommended for production:
     # plan: standard-0  # Or higher based on needs
     # region: oregon

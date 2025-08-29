@@ -89,48 +89,26 @@ app.include_router(file_router, prefix="/api/files", tags=["files"])
 # Add CORS middleware (single, consolidated configuration)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8008",
-        "http://127.0.0.1:8008",
-    ],
+    allow_origins=(
+        [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+    ),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"]
 )
 
 # Initialize database tables on startup
-from tenacity import retry, stop_after_attempt, wait_exponential
-from models.base import Base, engine, async_session_maker
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    reraise=True
-)
+@app.on_event("startup")
 async def startup_db():
-    """Initialize database tables on startup with retry logic."""
+    """Initialize database tables on startup."""
+    from models.base import engine
     try:
-        # Test the connection first
-        async with async_session_maker() as session:
-            await session.execute("SELECT 1")
-            
-        # Create tables if they don't exist
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            
         logger.info("Database tables created successfully")
-        
     except Exception as e:
-        logger.error(f"Database connection error: {str(e)}")
-        logger.error(f"Using database URL: {os.getenv('DATABASE_URL')}")
+        logger.error(f"Error creating database tables: {e}")
         raise
-
-# Add startup event handler
-@app.on_event("startup")
-async def on_startup():
-    await startup_db()
 
 # Use the get_db dependency from models.base
 
@@ -586,55 +564,13 @@ async def api_info() -> dict:
 
 
 @app.get("/ping")
-async def ping():
+async def ping() -> dict:
     """Health-check endpoint."""
-    return {"status": "ok", "message": "pong"}
-
-@app.get("/api/health")
-async def health_check():
-    """Comprehensive health check including database connectivity."""
-    from models.base import engine, async_session_maker
-    import time
-    
-    start_time = time.time()
-    status = {
-        "status": "healthy",
-        "timestamp": time.time(),
-        "checks": {
-            "database": {"status": "unhealthy", "error": None, "response_time_ms": None},
-        }
+    return {
+        "status": "ok",
+        "service": "QuoteMaster API",
+        "version": "0.1.0"
     }
-    
-    # Check database connection
-    try:
-        async with async_session_maker() as session:
-            start_db = time.time()
-            await session.execute("SELECT 1")
-            db_time = (time.time() - start_db) * 1000
-            status["checks"]["database"].update({
-                "status": "healthy",
-                "response_time_ms": round(db_time, 2)
-            })
-    except Exception as e:
-        status["status"] = "unhealthy"
-        status["checks"]["database"].update({
-            "error": str(e),
-            "connection_url": os.getenv("DATABASE_URL", "not set").split("@")[-1] if os.getenv("DATABASE_URL") else "not set"
-        })
-    
-    status["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
-    
-    # If any check failed, return 503
-    if any(check["status"] != "healthy" for check in status["checks"].values()):
-        status["status"] = "unhealthy"
-        return JSONResponse(
-            content=status,
-            status_code=503,
-            media_type="application/health+json",
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
-        )
-    
-    return status
 
 # Dashboard and Profile Routes
 

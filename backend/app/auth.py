@@ -45,11 +45,6 @@ def decode_access_token(token: str):
 # User DB helpers
 async def get_user_by_username(session: AsyncSession, username: str):
     """Get user by username with fresh data."""
-    stmt = select(User).filter(User.username == username)
-    result = await session.execute(stmt)
-    user = result.scalar_one_or_none()
-    await session.refresh(user) if user else None
-    return user
     try:
         result = await session.execute(select(User).where(User.username == username))
         user = result.scalars().first()
