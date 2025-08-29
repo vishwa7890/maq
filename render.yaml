@@ -82,12 +82,13 @@ services:
     
     # Build Configuration
     buildCommand: |
-      chmod +x ./build.sh
-      ./build.sh
+      python -m pip install --upgrade pip setuptools wheel
+      pip install --no-cache-dir -r backend/requirements.txt
+      python -m backend.database.database create_tables
     
     # Runtime Configuration
     startCommand: |
-      gunicorn app.main:app \
+      gunicorn backend.app.main:app \
         --workers $WORKERS_PER_CORE \
         --worker-class uvicorn.workers.UvicornWorker \
         --bind 0.0.0.0:$PORT \

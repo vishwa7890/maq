@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Static export for drag-and-drop deployments (generates `out/`)
+  output: 'export',
   eslint: {
     ignoreDuringBuilds: true,
   },

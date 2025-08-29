@@ -1,0 +1,9 @@
+# Netlify configuration for Next.js app located in the frontend/ subdirectory
+
+[build]
+  base = "frontend"
+  command = "npm run build:static"
+  publish = "out"
+
+[build.environment]
+  NEXT_TELEMETRY_DISABLED = "1"

@@ -8,7 +8,15 @@ import os
 from pathlib import Path
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
+raw_db_url = os.getenv("DATABASE_URL")
+
+# Normalize to asyncpg driver for Render-provided URLs
+if raw_db_url.startswith("postgres://"):
+    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif raw_db_url.startswith("postgresql://") and "+asyncpg" not in raw_db_url:
+    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    DATABASE_URL = raw_db_url
 
 # Create SQLAlchemy engine and session factory
 engine = create_async_engine(DATABASE_URL, echo=True, future=True)

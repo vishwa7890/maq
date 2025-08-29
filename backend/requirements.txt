@@ -4,6 +4,8 @@ uvicorn[standard]==0.29.0
 faiss-cpu==1.7.4
 sentence-transformers==2.6.1
 asyncpg==0.29.0
+SQLAlchemy==2.0.30
+gunicorn==21.2.0
 pydantic==2.7.1
 python-dotenv==1.0.1
 numpy==1.26.4
@@ -25,6 +27,9 @@ markdown==3.5.2
 bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
+
+# Forms
+python-multipart==0.0.9
 
 # Utils
 python-dotenv==1.0.1
