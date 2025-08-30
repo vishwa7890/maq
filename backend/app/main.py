@@ -82,20 +82,23 @@ app = FastAPI(
     redoc_url=None
 )
 
+# CORS configuration
+# Read comma-separated origins from env, e.g. "https://luminaque.netlify.app,https://example.com"
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+
+# Add CORS middleware (required for Netlify frontend -> Render backend, with cookies)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins if allow_origins else ["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Include routers
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(file_router, prefix="/api/files", tags=["files"])
-
-# Add CORS middleware (single, consolidated configuration)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=(
-        [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()]
-    ),
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"]
-)
 
 # Initialize database tables on startup
 @app.on_event("startup")
