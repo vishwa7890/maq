@@ -9,7 +9,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
-    phone_number: str = Field(..., min_length=10, max_length=15, description="User's mobile number")
+    phone_number: Optional[str] = Field(None, min_length=10, max_length=15, description="User's mobile number")
     # Optional role selection from UI; backend will validate and enforce allowed values
     role: str = Field(default="normal", description="User plan role: 'normal' or 'premium'")
 
