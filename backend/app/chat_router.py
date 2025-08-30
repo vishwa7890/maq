@@ -254,96 +254,88 @@ This summary table must always be the first table in your response, before any o
 """
 
 def is_business_related(query: str) -> bool:
-    """Check if the query is business-related."""
+    """Check if the query is business-related.
+    Broadened to include common phrasing and normalize symbols.
+    """
     import re
-    query_lower = query.lower()
-    
-    # Business-related keywords and phrases
+    # Normalize input: lowercase, '&' -> 'and', strip punctuation to spaces, collapse spaces
+    q = (query or "").lower()
+    q = q.replace('&', ' and ')
+    q = re.sub(r"[^a-z0-9\s]", " ", q)
+    q = re.sub(r"\s+", " ", q).strip()
+
+    # Expanded business-related keywords and phrases
     business_keywords = [
         # Project Estimation & Services
-        'cost', 'price', 'estimate', 'quotation', 'quote', 'budget', 'timeline', 'deadline',
-        'ui/ux', 'ui ux', 'design', 'development', 'software', 'app', 'website', 'web',
-        'mobile', 'frontend', 'backend', 'full-stack', 'prototype', 'wireframe',
-        'service', 'package', 'project', 'deliverable', 'milestone',
-        
+        'cost', 'price', 'estimate', 'estimation', 'quotation', 'quote', 'budget', 'timeline', 'deadline',
+        'ui ux', 'ui', 'ux', 'design', 'development', 'software', 'app', 'website', 'web',
+        'mobile', 'frontend', 'backend', 'full stack', 'prototype', 'wireframe',
+        'service', 'services', 'package', 'project', 'deliverable', 'milestone', 'proposal', 'rfp',
+
         # Pricing & Plans
-        'pricing', 'plan', 'package', 'gst', 'tax', 'payment', 'discount', 'startup',
-        'enterprise', 'premium', 'basic', 'plan', 'subscription', 'billing',
-        
+        'pricing', 'plan', 'gst', 'tax', 'payment', 'discount', 'startup',
+        'enterprise', 'premium', 'basic', 'subscription', 'billing',
+
         # Business Strategy & Planning
         'strategy', 'planning', 'business', 'industry', 'market', 'competitive',
         'analysis', 'recommendation', 'tech stack', 'technology', 'scalable',
         'mvp', 'saas', 'platform', 'optimization', 'branding', 'research',
-        
+
         # Technology & Development
-        'development', 'programming', 'coding', 'technology', 'tech', 'stack',
-        'framework', 'database', 'api', 'integration', 'deployment',
-        
+        'programming', 'coding', 'framework', 'database', 'api', 'integration', 'deployment',
+
         # Industry & Domain
-        'industry', 'sector', 'domain', 'vertical', 'market', 'business model',
+        'sector', 'domain', 'vertical', 'business model',
         'revenue', 'profit', 'investment', 'roi', 'growth', 'scale',
         'capital investment', 'business capital', 'venture capital',
-        
+
         # Common business terms
         'client', 'customer', 'vendor', 'supplier', 'partner', 'stakeholder',
-        'requirement', 'specification', 'scope', 'deliverable', 'quality',
-        'maintenance', 'support', 'consulting', 'advisory', 'expertise'
+        'requirement', 'specification', 'scope', 'quality',
+        'maintenance', 'support', 'consulting', 'advisory', 'expertise',
 
-        # discount
-        'discount',
+        # Additional triggers
+        'portfolio', 'estimate cost', 'project estimate', 'service quotation', 'quote request'
     ]
-    
-    # Check if any business keyword is present
-    for keyword in business_keywords:
-        if keyword in query_lower:
+
+    # Quick keyword check
+    for kw in business_keywords:
+        if kw in q:
             return True
-    
-    # Check for specific business question patterns
+
+    # Broader regex patterns
     business_patterns = [
-        r'how much.*cost',
-        r'what.*price',
-        r'estimate.*project',
-        r'quote.*service',
-        r'timeline.*project',
+        r'how much\s+.*cost',
+        r'what\s+.*price',
+        r'(estimate|estimation).*project',
+        r'project.*(estimate|estimation|timeline|budget)',
+        r'quote.*(service|project|work)',
+        r'(service|services).*(package|pricing|quotation|estimate)',
         r'pricing.*plan',
         r'business.*strategy',
         r'tech.*stack',
         r'development.*cost',
         r'design.*service',
         r'consulting.*fee',
-        r'project.*budget',
-        r'service.*package',
         r'payment.*terms',
-        r'industry.*recommendation'
+        r'industry.*recommendation',
+        r'portfolio.*(project|work|services)'
     ]
-    
-    # Check for non-business patterns (should return False)
+
+    # Non-business patterns
     non_business_patterns = [
-        r'weather',
-        r'joke',
-        r'cook',
-        r'capital.*france',
-        r'homework',
-        r'meaning.*life',
-        r'hobby',
-        r'movie',
-        r'guitar',
-        r'recipe',
-        r'book',
-        r'population',
-        r'car',
-        r'exercise'
+        r'weather', r'joke', r'cook', r'capital.*france', r'homework', r'meaning.*life',
+        r'hobby', r'movie', r'guitar', r'recipe', r'book', r'population', r'car', r'exercise'
     ]
-    
-    # If any non-business pattern matches, return False
+
     for pattern in non_business_patterns:
-        if re.search(pattern, query_lower):
+        if re.search(pattern, q):
             return False
-    
+
     for pattern in business_patterns:
-        if re.search(pattern, query_lower):
+        if re.search(pattern, q):
             return True
-    
+
     return False
 
 def fix_table_formatting(text: str) -> str:
@@ -458,9 +450,11 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "system", "content": (
-                    "CRITICAL: Respond ONLY using properly formatted markdown tables as per the system rules. "
-                    "Do NOT include paragraphs outside tables. Ensure headers, separator rows, consistent column counts, "
-                    "and INR currency where monetary values are shown. If the user asks for a quotation, the first table MUST be the summary table."
+                    "CRITICAL: For business queries, respond ONLY with markdown tables. NO text above tables. "
+                    "NO headings above tables. NO explanatory paragraphs. Start directly with tables. "
+                    "Use proper table format: headers, separator rows (|---|---|), consistent columns. "
+                    "Use INR currency (₹). For quotes: first table = summary (Client Name|Project Name|Date). "
+                    "Keep content minimal and professional."
                 )},
                 {"role": "user", "content": prompt}
             ]

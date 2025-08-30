@@ -1,7 +1,14 @@
-export const API_BASE =
-  (typeof window !== 'undefined'
+// Ensure the base URL ends with a single slash
+const getBaseUrl = () => {
+  let base = (typeof window !== 'undefined'
     ? (process.env.NEXT_PUBLIC_BACKEND_URL as string | undefined)
-    : process.env.BACKEND_URL) || 'http://localhost:8000'
+    : process.env.BACKEND_URL) || 'https://lumina-nbzx.onrender.com';
+  
+  // Ensure the base URL ends with exactly one slash
+  return base.endsWith('/') ? base : `${base}/`;
+};
+
+export const API_BASE = getBaseUrl();
 
 export type FetchOptions = RequestInit & {
   json?: any
@@ -13,15 +20,16 @@ const cache = new Map();
 const CACHE_TIME = 5 * 60 * 1000; // 5 minutes
 
 export async function apiFetch(path: string, opts: FetchOptions = {}) {
-  // If calling Next.js internal API route, do not prefix with backend URL
+  // Always route to backend unless an absolute URL is provided
   const isExternal = path.startsWith('http')
-  const isInternalApi = path.startsWith('/api/')
-  const url = isExternal ? path : isInternalApi ? path : `${API_BASE}${path}`
+  // Remove any leading slashes from path to prevent double slashes after API_BASE
+  const cleanPath = path.replace(/^\/+/, '')
+  const url = isExternal ? path : new URL(cleanPath, API_BASE).toString()
   const { json, headers, ...rest } = opts
   // Identify auth endpoints to avoid recursive logout on expected 401s
-  const isAuthMe = path === '/api/auth/me' || path.endsWith('/auth/me')
+  const isAuthMe = path === '/auth/me' || path.endsWith('/auth/me')
   const isAuthEndpoint =
-    path.startsWith('/api/auth/') ||
+    path.startsWith('/auth/') ||
     path.includes('/auth/login') ||
     path.includes('/auth/logout') ||
     path.includes('/auth/register') ||
@@ -37,15 +45,12 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
 
   // Ensure we include credentials for all requests to maintain session
   const fetchOptions: RequestInit = {
-    ...rest,
-    credentials: 'include', // This will handle sending/receiving cookies automatically
+    credentials: 'include', // Include cookies in requests
     headers: {
-      'Accept': 'application/json',
-      'Cache-Control': 'no-cache',
       ...(json ? { 'Content-Type': 'application/json' } : {}),
-      ...(headers || {}),
+      ...headers,
     },
-    body: json ? JSON.stringify(json) : opts.body,
+    ...rest,
   }
 
   // If noCache, ensure we purge any stale entry before fetching
@@ -101,18 +106,27 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
 }
 
 export const api = {
-  // Route through Next.js API to handle cookies and CORS
-  login: (payload: { username: string; password: string }) =>
-    apiFetch('/api/auth/login', { method: 'POST', json: payload }),
+  // Directly call FastAPI backend endpoints
+  login: (payload: { username: string; password: string }) => {
+    // FastAPI's OAuth2PasswordRequestForm expects form-encoded body: username, password
+    const form = new URLSearchParams()
+    form.append('username', payload.username)
+    form.append('password', payload.password)
+    return apiFetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form as any,
+    })
+  },
   register: (payload: { username: string; email: string; password: string; phone_number?: string; phone?: string; role?: 'normal' | 'premium' }) =>
-    apiFetch('/api/auth/register', { method: 'POST', json: payload }),
+    apiFetch('/auth/register', { method: 'POST', json: payload }),
   // Always bypass cache for user info to keep usage counts fresh
-  me: () => apiFetch('/api/auth/me', { method: 'GET', noCache: true }),
+  me: () => apiFetch('/auth/me', { method: 'GET', noCache: true }),
   generateQuote: async (payload: any) => {
     const result = await apiFetch('/api/quotes/generate', { method: 'POST', json: payload })
     // Invalidate user info cache and notify listeners so UI can refresh counts
     try {
-      cache.delete('/api/auth/me')
+      cache.delete('/auth/me')
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('user-updated'))
       }
@@ -120,9 +134,9 @@ export const api = {
     return result
   },
   logout: async () => {
-    const result = await apiFetch('/api/auth/logout', { method: 'POST' })
+    const result = await apiFetch('/auth/logout', { method: 'POST' })
     try {
-      cache.delete('/api/auth/me')
+      cache.delete('/auth/me')
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('user-updated'))
       }
@@ -130,16 +144,16 @@ export const api = {
     return result
   },
   // Chat APIs (proxying to backend via Next.js API routes)
-  listChatSessions: () => apiFetch('/api/chat/sessions', { method: 'GET' }),
+  listChatSessions: () => apiFetch('/api/chat/sessions/', { method: 'GET' }),
   createChatSession: (payload: { title?: string; metadata?: any }) =>
-    apiFetch('/api/chat/sessions', { method: 'POST', json: payload }),
+    apiFetch('/api/chat/sessions/', { method: 'POST', json: payload }),
   getSessionMessages: (session_uuid: string) =>
     apiFetch(`/api/chat/sessions/${encodeURIComponent(session_uuid)}/messages`, { method: 'GET' }),
   sendChat: async (payload: { content: string; chat_id?: string; role?: 'user' | 'assistant' }) => {
     const result = await apiFetch('/api/chat/chat', { method: 'POST', json: payload })
     try {
       if (result && result.user_info) {
-        cache.delete('/api/auth/me')
+        cache.delete('/auth/me')
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('user-updated'))
         }

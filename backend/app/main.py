@@ -90,7 +90,7 @@ app.include_router(file_router, prefix="/api/files", tags=["files"])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=(
-        [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+        [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()]
     ),
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -166,9 +166,9 @@ async def register(
             key="access_token",
             value=access_token,
             httponly=True,
-            max_age=3600,  # 1 hour
-            samesite="none",
-            secure=False,  # Set to True in production with HTTPS
+            max_age=86400,  # 24 hours (match JWT expiry)
+            samesite="none",  # Use None for cross-site cookies in production
+            secure=True,  # True in production with HTTPS
             path="/",
         )
         
@@ -231,14 +231,15 @@ async def login(
         key="access_token",
         value=access_token,
         httponly=True,
-        max_age=3600,  # 1 hour
-        samesite="none",
-        secure=False,  # Set to True in production with HTTPS
+        max_age=86400,  # 24 hours (match JWT expiry)
+        samesite="none",  # Use None for cross-site cookies in production
+        secure=True,  # True in production with HTTPS
         path="/",
     )
     
     # Return success response with redirect URL
-    return {"message": "Login successful", "redirect": "/chat"}
+    frontend_url = os.getenv("FRONTEND_URL")
+    return {"message": "Login successful", "redirect": f"{frontend_url}/chat"}
 
 @app.post("/auth/logout")
 async def logout(response: Response):
@@ -247,10 +248,11 @@ async def logout(response: Response):
         key="access_token",
         httponly=True,
         samesite="none",
-        secure=False,  # Set to True in production with HTTPS
+        secure=True,  # Match cookie attributes to ensure deletion in production
         path="/",
     )
-    return {"message": "Successfully logged out", "redirect": "/login"}
+    frontend_url = os.getenv("FRONTEND_URL")
+    return {"message": "Successfully logged out", "redirect": f"{frontend_url}/auth"}
 
 
 @app.get("/auth/me", response_model=dict)
@@ -464,8 +466,9 @@ async def root(request: Request):
     access_token = request.cookies.get("access_token")
     
     if not access_token:
-        # No token found, redirect to login
-        return RedirectResponse(url="/login")
+        # No token found, redirect to frontend auth page
+        frontend_url = os.getenv("FRONTEND_URL")
+        return RedirectResponse(url=f"{frontend_url}/auth")
     
     # Token exists, verify it
     try:
@@ -480,73 +483,17 @@ async def root(request: Request):
             algorithms=[ALGORITHM]
         )
         
-        # Token is valid, redirect to chat
-        return RedirectResponse(url="/chat")
+        # Token is valid, redirect to frontend chat
+        frontend_url = os.getenv("FRONTEND_URL")
+        return RedirectResponse(url=f"{frontend_url}/chat")
         
     except jwt.PyJWTError:
-        # Invalid token, clear cookie and redirect to login
-        response = RedirectResponse(url="/login")
+        # Invalid token, clear cookie and redirect to frontend auth
+        frontend_url = os.getenv("FRONTEND_URL")
+        response = RedirectResponse(url=f"{frontend_url}/auth")
         response.delete_cookie("access_token")
         return response
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_page():
-    """Serve the login page."""
-    try:
-        # Use absolute path to the login.html file
-        login_path = Path(__file__).parent / 'templates' / 'login.html'
-        if not login_path.exists():
-            raise FileNotFoundError(f"Login template not found at {login_path}")
-        return FileResponse(login_path)
-    except FileNotFoundError as e:
-        logger.error(f"Login page not found: {e}")
-        return HTMLResponse("Login page not found", status_code=404)
-
-@app.get("/chat", response_class=HTMLResponse)
-async def chat_page(current_user: User = Depends(get_current_user)):
-    """Serve the main chat interface with authentication check."""
-    try:
-        # Check if user is authenticated
-        if not current_user:
-            return RedirectResponse(url="/login")
-            
-        # Get the path to the index.html file
-        index_path = Path(__file__).parent / "templates" / "index.html"
-        logger.info(f"Looking for template at: {index_path}")
-        
-        # Check if the file exists
-        if not index_path.exists():
-            logger.error(f"Template file not found at {index_path}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Template file not found"
-            )
-            
-        # Read the HTML file
-        with open(index_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
-        
-        # Inject the API URL
-        api_url = os.getenv("API_URL", "http://localhost:8000")
-        html_content = html_content.replace("{{API_URL}}", api_url)
-        
-        # Add username as a meta tag if not already present
-        if '<meta name="username"' not in html_content:
-            username_meta = f'<meta name="username" content="{current_user.username}">'
-            html_content = html_content.replace('</head>', f'    {username_meta}\n</head>')
-        
-        # Update the username display
-        if 'id="usernameDisplay">' in html_content:
-            display_name = current_user.username.split('@')[0] if '@' in current_user.username else current_user.username
-            html_content = html_content.replace(
-                'id="usernameDisplay">User<',
-                f'id="usernameDisplay">{display_name}<'
-            )
-        
-        return HTMLResponse(content=html_content, status_code=200)
-    except Exception as e:
-        logger.error(f"Error serving chat page: {e}")
-        return HTMLResponse("An error occurred while loading the chat interface", status_code=500)
 
 
 @app.get("/api")

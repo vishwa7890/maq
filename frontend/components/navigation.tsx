@@ -19,36 +19,25 @@ export function Navigation() {
       try {
         const userData = await api.me()
         setUser(userData)
+        // Save user data to localStorage for dashboard access
+        localStorage.setItem('user', JSON.stringify(userData))
       } catch {
         setUser(null)
+        localStorage.removeItem('user')
       } finally {
         setIsLoading(false)
       }
     }
 
-    // Initial fetch
     fetchUser()
 
-    // Listen for global user updates (e.g., after quote generation or logout)
-    const onUserUpdated = () => {
-      // set loading skeleton briefly for visual feedback
-      setIsLoading(true)
+    // Listen for user updates (e.g., after quote generation)
+    const handleUserUpdate = () => {
       fetchUser()
     }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('user-updated', onUserUpdated)
-      // Also refresh when the tab becomes visible again
-      const onVisibility = () => {
-        if (document.visibilityState === 'visible') {
-          fetchUser()
-        }
-      }
-      document.addEventListener('visibilitychange', onVisibility)
-      return () => {
-        window.removeEventListener('user-updated', onUserUpdated)
-        document.removeEventListener('visibilitychange', onVisibility)
-      }
-    }
+
+    window.addEventListener('user-updated', handleUserUpdate)
+    return () => window.removeEventListener('user-updated', handleUserUpdate)
   }, [])
 
   const handleLogout = async () => {

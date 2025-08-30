@@ -6,10 +6,21 @@ Usage: python reset_password.py <username> <new_password>
 import asyncio
 import sys
 from pathlib import Path
+import os
 
 # Add the backend directory to the Python path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
+
+# Load environment variables from backend .env BEFORE importing models
+try:
+    from dotenv import load_dotenv
+    env_path = backend_dir / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+except Exception:
+    # dotenv is optional; continue if not available
+    pass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -19,6 +30,10 @@ from app.auth import hash_password
 
 async def reset_user_password(username: str, new_password: str):
     """Reset a user's password."""
+    # Ensure DATABASE_URL is available
+    if not os.getenv("DATABASE_URL"):
+        print("Error: DATABASE_URL is not set. Please configure backend/.env or export it before running.")
+        return False
     async with async_session_maker() as session:
         try:
             # Find the user
