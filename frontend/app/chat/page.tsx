@@ -17,6 +17,7 @@ import { api } from '@/lib/api'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
+import Image from 'next/image'
 
 interface User {
   id?: number
@@ -389,7 +390,16 @@ export default function ChatPage() {
               onFileUpload={handleFileUpload}
               user={user}
             />
-            <h1 className="text-lg font-semibold text-gray-900">Chat</h1>
+            <h1 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Image
+                src="/lumina_qou_png.png"
+                alt="Lumina Quo"
+                width={24}
+                height={24}
+                className="rounded"
+              />
+              Chat
+            </h1>
           </div>
           <Button
             variant="ghost"

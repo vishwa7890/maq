@@ -66,6 +66,7 @@ API_KEY = os.getenv("API_KEY")
 API_URL = os.getenv("API_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
 MAX_PROMPT_LENGTH = 4000
+MAX_CHATS_FOR_NORMAL_USERS = 5
 
 # Configure logging
 logging.basicConfig(

@@ -58,11 +58,10 @@ export function Navigation() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
             <Image
-              src="/lumina_logo.png"
+              src="/lumina_qou_png.png"
               alt="Lumina Quo"
-              width={32}
-              height={32}
-              className="rounded-lg group-hover:scale-105 transition-transform"
+              width={52}
+              height={52}
               priority
             />
             <span className="text-xl font-bold text-gray-900">Lumina Quo</span>
