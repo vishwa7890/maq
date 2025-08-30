@@ -12,7 +12,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, RedirectResponse
 from fastapi.exceptions import RequestValidationError
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
@@ -35,6 +34,9 @@ from app.auth import (
     get_user_by_email,
     get_current_user
 )
+
+# Preload SentenceTransformer model to avoid download delays
+from sentence_transformers import SentenceTransformer
 
 # JWT Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -442,6 +444,12 @@ async def startup_event():
     
     try:
         logger.info("Starting up application...")
+        
+        # Preload SentenceTransformer model to avoid download delays during requests
+        logger.info("Preloading SentenceTransformer model...")
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        logger.info("SentenceTransformer model loaded successfully")
+        
         # Add any startup tasks here
         
         # Log successful startup
