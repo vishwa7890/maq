@@ -45,11 +45,12 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
 
   // Ensure we include credentials for all requests to maintain session
   const fetchOptions: RequestInit = {
-    credentials: 'include', // Include cookies in requests
+    credentials: 'include',
     headers: {
       ...(json ? { 'Content-Type': 'application/json' } : {}),
       ...headers,
     },
+    body: json ? JSON.stringify(json) : rest.body,   // 👈 fix
     ...rest,
   }
 

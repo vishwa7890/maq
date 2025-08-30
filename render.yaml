@@ -54,7 +54,9 @@ envVars:
   - key: ACCESS_TOKEN_EXPIRE_MINUTES
     value: "30"
   - key: CORS_ORIGINS
-    value: "*"  # Restrict in production
+    value: "https://luminaque.netlify.app"
+  - key: FRONTEND_URL
+    value: "https://luminaque.netlify.app"
   - key: RATE_LIMIT
     value: "1000"
   

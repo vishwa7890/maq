@@ -92,25 +92,23 @@ logger.info(f"CORS_ORIGINS env: '{cors_origins_env}'")
 logger.info(f"Parsed allow_origins: {allow_origins}")
 
 # Add CORS middleware (required for Netlify frontend -> Render backend, with cookies)
-# Use wildcard for development if no origins specified
+# If env is missing, use safe defaults that support credentials
+default_origins = [
+    "https://luminaque.netlify.app",
+    "http://localhost:3000",
+]
+final_origins = allow_origins if allow_origins else default_origins
 if not allow_origins:
-    logger.warning("No CORS_ORIGINS set, using wildcard for development")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,  # Cannot use credentials with wildcard
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allow_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
-        expose_headers=["*"],
-    )
+    logger.warning(f"CORS_ORIGINS not set, using defaults: {final_origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=final_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
 # Include routers
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
