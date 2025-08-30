@@ -87,23 +87,22 @@ app = FastAPI(
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 
+# If no CORS_ORIGINS set, use FRONTEND_URL as fallback
+if not allow_origins:
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    if frontend_url:
+        allow_origins.append(frontend_url)
+    # Add localhost for development
+    allow_origins.extend(["http://localhost:3000", "http://localhost:3001"])
+
 # Log CORS configuration for debugging
 logger.info(f"CORS_ORIGINS env: '{cors_origins_env}'")
-logger.info(f"Parsed allow_origins: {allow_origins}")
-
-# Add CORS middleware (required for Netlify frontend -> Render backend, with cookies)
-# If env is missing, use safe defaults that support credentials
-default_origins = [
-    "https://luminaque.netlify.app",
-    "http://localhost:3000",
-]
-final_origins = allow_origins if allow_origins else default_origins
-if not allow_origins:
-    logger.warning(f"CORS_ORIGINS not set, using defaults: {final_origins}")
+logger.info(f"FRONTEND_URL env: '{os.getenv('FRONTEND_URL', 'not set')}'")
+logger.info(f"Final allow_origins: {allow_origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=final_origins,
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -534,6 +533,27 @@ async def ping() -> dict:
         "status": "ok",
         "service": "QuoteMaster API",
         "version": "0.1.0"
+    }
+
+@app.get("/cors-debug")
+async def cors_debug() -> dict:
+    """Debug endpoint to check CORS configuration."""
+    cors_origins_env = os.getenv("CORS_ORIGINS", "")
+    allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+    
+    # If no CORS_ORIGINS set, use FRONTEND_URL as fallback
+    if not allow_origins:
+        frontend_url = os.getenv("FRONTEND_URL", "")
+        if frontend_url:
+            allow_origins.append(frontend_url)
+        # Add localhost for development
+        allow_origins.extend(["http://localhost:3000", "http://localhost:3001"])
+    
+    return {
+        "cors_origins_env": cors_origins_env,
+        "final_allow_origins": allow_origins,
+        "frontend_url": os.getenv("FRONTEND_URL", "not set"),
+        "environment": os.getenv("ENVIRONMENT", "not set")
     }
 
 # Dashboard and Profile Routes
