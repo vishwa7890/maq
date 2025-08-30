@@ -536,24 +536,20 @@ async def ping() -> dict:
     }
 
 @app.get("/cors-debug")
-async def cors_debug() -> dict:
-    """Debug endpoint to check CORS configuration."""
+async def cors_debug():
     cors_origins_env = os.getenv("CORS_ORIGINS", "")
     allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
     
-    # If no CORS_ORIGINS set, use FRONTEND_URL as fallback
     if not allow_origins:
         frontend_url = os.getenv("FRONTEND_URL", "")
         if frontend_url:
             allow_origins.append(frontend_url)
-        # Add localhost for development
         allow_origins.extend(["http://localhost:3000", "http://localhost:3001"])
     
     return {
         "cors_origins_env": cors_origins_env,
-        "final_allow_origins": allow_origins,
         "frontend_url": os.getenv("FRONTEND_URL", "not set"),
-        "environment": os.getenv("ENVIRONMENT", "not set")
+        "allow_origins": allow_origins
     }
 
 # Dashboard and Profile Routes
