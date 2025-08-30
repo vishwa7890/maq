@@ -87,6 +87,10 @@ app = FastAPI(
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 
+# Log CORS configuration for debugging
+logger.info(f"CORS_ORIGINS env: '{cors_origins_env}'")
+logger.info(f"Parsed allow_origins: {allow_origins}")
+
 # Add CORS middleware (required for Netlify frontend -> Render backend, with cookies)
 app.add_middleware(
     CORSMiddleware,
