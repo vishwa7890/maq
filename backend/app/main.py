@@ -92,13 +92,25 @@ logger.info(f"CORS_ORIGINS env: '{cors_origins_env}'")
 logger.info(f"Parsed allow_origins: {allow_origins}")
 
 # Add CORS middleware (required for Netlify frontend -> Render backend, with cookies)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins if allow_origins else ["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Use wildcard for development if no origins specified
+if not allow_origins:
+    logger.warning("No CORS_ORIGINS set, using wildcard for development")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,  # Cannot use credentials with wildcard
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+    )
 
 # Include routers
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
