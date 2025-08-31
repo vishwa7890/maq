@@ -7,7 +7,7 @@ import jwt
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, Request, status, Response, Depends, HTTPException
+from fastapi import FastAPI, Request, status, Response, Depends, HTTPException, APIRouter
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, RedirectResponse
@@ -112,7 +112,15 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# Lightweight auth router for debugging routing from Vercel/Netlify
+auth_router = APIRouter()
+
+@auth_router.get("/ping")
+async def auth_ping(request: Request):
+    return {"user": "test-user"}
+
 # Include routers
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(file_router, prefix="/api/files", tags=["files"])
 
