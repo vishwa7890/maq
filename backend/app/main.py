@@ -119,6 +119,11 @@ auth_router = APIRouter()
 async def auth_ping(request: Request):
     return {"user": "test-user"}
 
+@auth_router.get("/me-debug")
+async def auth_me_debug():
+    """Debug endpoint that returns a mock user without auth."""
+    return {"user": "test-user"}
+
 # Include routers
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
