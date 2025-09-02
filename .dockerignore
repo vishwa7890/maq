@@ -1,7 +1,6 @@
 # Git
 .git
 .gitignore
-.gitattributes
 
 # Python
 __pycache__/
@@ -9,31 +8,29 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.pyc
-*.pyd
-*.pyo
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-
-# Virtual Environment
-venv/
 env/
+venv/
 ENV/
-.venv/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+!.env.example
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*.swn
-.DS_Store
 
-# Environment
-.env
-.env.*
-!.env.example
+# Local development
+.dockerignore
+Dockerfile
+docker-compose.yml
 
 # Logs
 logs/
@@ -42,7 +39,6 @@ logs/
 # Local development
 *.sqlite3
 *.db
-*.sql
 
 # Build files
 build/
@@ -54,9 +50,13 @@ tests/
 .coverage
 htmlcov/
 
-# Jupyter
+# Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
+
+# Local development
+*.bak
+*.backup
+*~
 
 # Project specific
 frontend/
@@ -76,17 +76,8 @@ backend/.env
 *.pkl
 *.npy
 *.npz
-*.onnx
-*.prototxt
-
-# Cache and model files
-.cache/
-.huggingface/
-.transformers/
-*.safetensors
 
 # Ignore everything in the root except the backend directory
 */
 !backend/
 !railway.json
-!Dockerfile
