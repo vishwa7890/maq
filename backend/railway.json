@@ -1,11 +1,10 @@
 {
     "build": {
       "builder": "nixpacks",
-      "buildCommand": "pip install -r requirements.txt"
+      "buildCommand": "pip install --no-cache-dir -r backend/requirements.txt -f https://download.pytorch.org/whl/cpu"
     },
     "deploy": {
       "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT",
       "rootDir": "backend"
     }
   }
-  
