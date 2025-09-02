@@ -1,31 +1,24 @@
-# CPU-only PyTorch stack
-torch==2.8.0+cpu
-torchvision==0.19.0+cpu
-torchaudio==2.5.0+cpu
--f https://download.pytorch.org/whl/cpu
-
-# Core
 fastapi==0.111.0
+PyJWT==2.8.0
 uvicorn[standard]==0.29.0
-gunicorn==21.2.0
-
-# Database
-asyncpg==0.29.0
-SQLAlchemy==2.0.30
-
-# ML / NLP
 faiss-cpu==1.8.0
 sentence-transformers==2.6.1
-transformers==4.38.2
-scikit-learn==1.4.0
+asyncpg==0.29.0
+SQLAlchemy==2.0.30
+gunicorn==21.2.0
+pydantic==2.7.1
+python-dotenv==1.0.1
 numpy==1.26.4
 pandas==2.2.1
+scikit-learn==1.4.0
+transformers==4.38.2
 networkx==3.2.1
-tqdm==4.66.1
 
-# PDF/Text
+# PDF Processing
 pdfplumber==0.10.3
 PyMuPDF==1.23.26
+
+# Text Processing
 fuzzywuzzy==0.18.0
 python-Levenshtein==0.23.0
 markdown==3.5.2
@@ -34,12 +27,12 @@ markdown==3.5.2
 bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
-PyJWT==2.8.0
 
 # Forms
 python-multipart==0.0.9
 
-# Config
+# Utils
 python-dotenv==1.0.1
 pydantic==2.7.1
 pydantic-settings==2.2.1
+tqdm==4.66.1
