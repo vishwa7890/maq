@@ -1,33 +1,38 @@
-# Core
 fastapi==0.111.0
+PyJWT==2.8.0
 uvicorn[standard]==0.29.0
-gunicorn==21.2.0
-
-# Database
+faiss-cpu==1.8.0
+sentence-transformers==2.6.1
 asyncpg==0.29.0
 SQLAlchemy==2.0.30
-
-# AI/ML (minimal set)
-torch==2.0.1+cpu -f https://download.pytorch.org/whl/cpu
-transformers==4.38.2
-sentence-transformers==2.6.1
+gunicorn==21.2.0
+pydantic==2.7.1
+python-dotenv==1.0.1
 numpy==1.26.4
+pandas==2.2.1
 scikit-learn==1.4.0
+transformers==4.38.2
+networkx==3.2.1
+
+# PDF Processing
+pdfplumber==0.10.3
+PyMuPDF==1.23.26
+
+# Text Processing
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.23.0
+markdown==3.5.2
 
 # Security
-PyJWT==2.8.0
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+
+# Forms
+python-multipart==0.0.9
 
 # Utils
 python-dotenv==1.0.1
 pydantic==2.7.1
-
-# PDF Processing (only if absolutely needed)
-# pdfplumber==0.10.3
-# PyMuPDF==1.23.26
-
-# Text Processing (only if absolutely needed)
-# fuzzywuzzy==0.18.0
-# python-Levenshtein==0.23.0
+pydantic-settings==2.2.1
+tqdm==4.66.1

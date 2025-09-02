@@ -13,37 +13,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install only the required dependencies first
+# Install Python dependencies
 COPY requirements.txt .
-
-# Install build dependencies first
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch==2.0.1+cpu -f https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -f https://download.pytorch.org/whl/cpu
 
 # Stage 2: Runtime stage
 FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy only necessary files from builder
 COPY --from=builder /opt/venv /opt/venv
-
-# Copy only necessary application files
-COPY app ./app
-COPY *.py ./
+COPY . .
 
 # Set environment variables
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV TRANSFORMERS_OFFLINE=1
-ENV TOKENIZERS_PARALLELISM=false
 
 # Run as non-root user
 RUN useradd -m appuser && chown -R appuser:appuser /app
