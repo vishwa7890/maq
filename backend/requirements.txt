@@ -16,7 +16,7 @@ scikit-learn==1.2.2
 
 # Security
 PyJWT==2.6.0
-python-jose[cryptography]==3.3.2
+python-jose[cryptography]==3.3.0  # Last version compatible with Python 3.10
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 
