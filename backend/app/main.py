@@ -36,8 +36,7 @@ from app.auth import (
     get_current_user
 )
 
-# Preload SentenceTransformer model to avoid download delays
-from sentence_transformers import SentenceTransformer
+# Removed SentenceTransformer import - now using Hugging Face API
 
 # JWT Configuration
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -459,10 +458,8 @@ async def startup_event():
     try:
         logger.info("Starting up application...")
         
-        # Preload SentenceTransformer model to avoid download delays during requests
-        logger.info("Preloading SentenceTransformer model...")
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-        logger.info("SentenceTransformer model loaded successfully")
+        # Application now uses Hugging Face API instead of local models
+        logger.info("Application configured to use Hugging Face API for embeddings")
         
         # Add any startup tasks here
         

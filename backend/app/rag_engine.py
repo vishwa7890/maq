@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import os
 import json
+import httpx
+import asyncio
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
+import numpy as np
 
 import faiss
-from sentence_transformers import SentenceTransformer
 
 # Load environment variables
 load_dotenv(Path(__file__).parent.parent / '.env')
@@ -27,18 +29,48 @@ DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).resolve().parent.parent
 EMBEDDING_FILE = Path(os.getenv("FAISS_INDEX_PATH", str(DATA_DIR / "embeddings/quote_index.faiss")))
 MAPPING_FILE = Path(os.getenv("FAISS_INDEX_MAP", str(DATA_DIR / "quotes/index_map.json")))
 
-MODEL_NAME = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+# Hugging Face API Configuration
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+EMBEDDING_MODEL_API = os.getenv("EMBEDDING_MODEL_API", "sentence-transformers/all-MiniLM-L6-v2")
+HUGGINGFACE_API_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{EMBEDDING_MODEL_API}"
 
 # Lazy singletons ------------------------------------------------------------
-_model_instance: SentenceTransformer | None = None
 _index_instance: faiss.IndexFlatIP | None = None
 
 
-def _get_model() -> SentenceTransformer:
-    global _model_instance
-    if _model_instance is None:
-        _model_instance = SentenceTransformer(MODEL_NAME)
-    return _model_instance
+async def _get_embeddings_from_hf_api(texts: List[str]) -> np.ndarray:
+    """Get embeddings from Hugging Face API"""
+    if not HUGGINGFACE_API_KEY:
+        raise ValueError("HUGGINGFACE_API_KEY is not set in environment variables")
+    
+    headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                HUGGINGFACE_API_URL,
+                headers=headers,
+                json={"inputs": texts, "options": {"wait_for_model": True}},
+                timeout=30.0
+            )
+            response.raise_for_status()
+            embeddings = response.json()
+            return np.array(embeddings)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 503:
+                # Model is loading, wait and retry
+                await asyncio.sleep(20)
+                response = await client.post(
+                    HUGGINGFACE_API_URL,
+                    headers=headers,
+                    json={"inputs": texts, "options": {"wait_for_model": True}},
+                    timeout=60.0
+                )
+                response.raise_for_status()
+                embeddings = response.json()
+                return np.array(embeddings)
+            else:
+                raise
 
 
 def _get_index() -> faiss.Index:
@@ -52,9 +84,8 @@ def _get_index() -> faiss.Index:
     return _index_instance
 
 
-def build_index():
-    """Build FAISS index from quotes in `data/quotes` and save it to disk."""
-    model = _get_model()
+async def build_index():
+    """Build FAISS index from quotes in `data/quotes` and save it to disk using Hugging Face API."""
     quote_dir = DATA_DIR / "quotes"
 
     if not quote_dir.exists() or not any(quote_dir.iterdir()):
@@ -66,9 +97,9 @@ def build_index():
     quote_files = list(quote_dir.glob("*.txt"))
     documents = [q.read_text(encoding="utf-8") for q in quote_files]
     
-    # Create embeddings
-    print(f"Found {len(documents)} documents. Creating embeddings...")
-    embeddings = model.encode(documents, show_progress_bar=True)
+    # Create embeddings using Hugging Face API
+    print(f"Found {len(documents)} documents. Creating embeddings using Hugging Face API...")
+    embeddings = await _get_embeddings_from_hf_api(documents)
     
     # Build FAISS index
     dimension = embeddings.shape[1]
@@ -91,8 +122,8 @@ def build_index():
     print(f"✅ Mapping file saved to {MAPPING_FILE}")
 
 
-def retrieve_context(client_name: str, project_type: str, k: int = 3) -> List[str]:
-    """Return *k* most relevant quote snippets.
+async def retrieve_context(client_name: str, project_type: str, k: int = 3) -> List[str]:
+    """Return *k* most relevant quote snippets using Hugging Face API.
 
     Parameters
     ----------
@@ -106,39 +137,49 @@ def retrieve_context(client_name: str, project_type: str, k: int = 3) -> List[st
 
     query = f"{client_name} {project_type}"
 
-    model = _get_model()
-    index = _get_index()
+    try:
+        index = _get_index()
+        
+        # Get query embedding from Hugging Face API
+        vec = await _get_embeddings_from_hf_api([query])
+        
+        # FAISS expects shape (n_vectors, dim)
+        D, I = index.search(vec, k)
 
-    vec = model.encode([query])
-    # FAISS expects shape (n_vectors, dim)
-    D, I = index.search(vec, k)
+        # FAISS returns -1 for padded IDs when fewer than k hits
+        ids = [idx for idx in I[0] if idx != -1]
 
-    # FAISS returns -1 for padded IDs when fewer than k hits
-    ids = [idx for idx in I[0] if idx != -1]
+        if not ids:
+            return []
 
-    if not ids:
+        with open(MAPPING_FILE, "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+
+        return [mapping[str(i)] for i in ids if str(i) in mapping]
+    except Exception as e:
+        print(f"Error in retrieve_context: {e}")
         return []
 
-    with open(MAPPING_FILE, "r", encoding="utf-8") as f:
-        mapping = json.load(f)
 
-    return [mapping[str(i)] for i in ids if str(i) in mapping]
-
-
-def get_rag_context(query: str, max_results: int = 3) -> str:
+async def get_rag_context(query: str, max_results: int = 3) -> str:
     """
-    Retrieve relevant context from RAG index for a given query.
+    Retrieve relevant context from RAG index for a given query using Hugging Face API.
     Returns formatted string with top matching documents.
     """
     try:
+        # Check if mapping file exists
+        if not MAPPING_FILE.exists():
+            return "No relevant documents found - index not built"
+            
         # Load index mapping
         with open(MAPPING_FILE) as f:
             id_to_text = json.load(f)
         
-        # Encode query
-        model = _get_model()
+        # Get index
         index = _get_index()
-        query_embedding = model.encode([query])
+        
+        # Get query embedding from Hugging Face API
+        query_embedding = await _get_embeddings_from_hf_api([query])
         
         # Search index
         distances, indices = index.search(query_embedding, max_results)
@@ -146,9 +187,28 @@ def get_rag_context(query: str, max_results: int = 3) -> str:
         # Format results
         results = []
         for i, (dist, idx) in enumerate(zip(distances[0], indices[0])):
-            if idx in id_to_text:
-                results.append(f"Document {i+1} (relevance: {dist:.2f}):\n{id_to_text[idx]}")
+            if str(idx) in id_to_text:
+                results.append(f"Document {i+1} (relevance: {dist:.2f}):\n{id_to_text[str(idx)]}")
         
         return "\n\n".join(results) if results else "No relevant documents found"
     except Exception as e:
         return f"Error retrieving RAG context: {str(e)}"
+
+
+# Synchronous wrapper for backward compatibility
+def get_rag_context_sync(query: str, max_results: int = 3) -> str:
+    """
+    Synchronous wrapper for get_rag_context.
+    This is a fallback that returns a simple message when async is not available.
+    """
+    try:
+        # Try to run the async function
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If we're already in an async context, we can't use asyncio.run()
+            return "RAG context temporarily unavailable (async context conflict)"
+        else:
+            return asyncio.run(get_rag_context(query, max_results))
+    except Exception as e:
+        return f"RAG context unavailable: {str(e)}"

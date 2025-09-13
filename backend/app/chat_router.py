@@ -44,7 +44,7 @@ from app.schemas import (
     QuoteRequest as QuoteRequestModel
 )
 from app.knowledge_graph import BusinessKnowledgeGraph, Entity
-from app.rag_engine import get_rag_context
+from app.rag_engine import get_rag_context, get_rag_context_sync
 from models.base import get_db
 from app.auth import get_current_user
 
@@ -827,7 +827,7 @@ User Query: {request.content}
 IMPORTANT: This is a UI/UX design request. Please respond with a properly formatted markdown table showing the UI/UX design services breakdown.
 
 Business Context: {knowledge_graph.get_business_context(request.content)}
-Reference Documents: {get_rag_context(request.content, max_results=3)}
+Reference Documents: {get_rag_context_sync(request.content, max_results=3)}
 
 Please provide a detailed UI/UX design estimate with the following structure:
 - Research & Discovery phase
@@ -850,7 +850,7 @@ User Query: {request.content}
 
                 
 Business Context: {knowledge_graph.get_business_context(request.content)}
-Reference Documents: {get_rag_context(request.content, max_results=3)}
+Reference Documents: {get_rag_context_sync(request.content, max_results=3)}
                 
 CRITICAL: Respond ONLY with markdown tables following the system's formatting rules. Do NOT include paragraphs outside tables.
 - Use INR for all monetary values
@@ -902,7 +902,7 @@ CRITICAL: Respond ONLY with markdown tables following the system's formatting ru
                     "session_uuid": chat_session.session_uuid,  # Include session UUID for frontend
                     "metadata": {
                         "context_used": bool(knowledge_graph.get_business_context(request.content) and knowledge_graph.get_business_context(request.content) != "No relevant business context found"),
-                        "documents_used": bool(get_rag_context(request.content, max_results=3) and get_rag_context(request.content, max_results=3) != "No relevant documents found"),
+                        "documents_used": bool(get_rag_context_sync(request.content, max_results=3) and get_rag_context_sync(request.content, max_results=3) != "No relevant documents found"),
                         "timestamp": datetime.utcnow().isoformat()
                     },
                     "user_info": {

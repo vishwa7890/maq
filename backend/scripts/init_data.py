@@ -1,18 +1,27 @@
 """
-Script to initialize the FAISS index and sample data for testing.
+Script to initialize the FAISS index and sample data for testing using Hugging Face API.
 """
 import os
 import json
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
+import httpx
+import asyncio
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv(Path(__file__).parent.parent / '.env')
 
 # Configuration
 DATA_DIR = Path(__file__).parent.parent / "data"
 EMBEDDING_DIR = DATA_DIR / "embeddings"
 QUOTES_DIR = DATA_DIR / "quotes"
-MODEL_NAME = "all-MiniLM-L6-v2"  # Same as in rag_engine.py
+
+# Hugging Face API Configuration
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+EMBEDDING_MODEL_API = os.getenv("EMBEDDING_MODEL_API", "sentence-transformers/all-MiniLM-L6-v2")
+HUGGINGFACE_API_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{EMBEDDING_MODEL_API}"
 
 # Ensure directories exist
 os.makedirs(EMBEDDING_DIR, exist_ok=True)
@@ -34,16 +43,53 @@ SAMPLE_QUOTES = [
     "UI/UX design breakdown: Research phase (1-2 weeks, $5,000-$10,000), Wireframing (2-3 weeks, $8,000-$15,000), UI Design (3-4 weeks, $12,000-$25,000), Prototyping (1-2 weeks, $5,000-$10,000), Testing (1 week, $3,000-$8,000)."
 ]
 
-def initialize_faiss_index():
-    """Initialize and save a FAISS index with sample quotes."""
-    print("Initializing FAISS index with sample data...")
+async def get_embeddings_from_hf_api(texts):
+    """Get embeddings from Hugging Face API"""
+    if not HUGGINGFACE_API_KEY:
+        raise ValueError("HUGGINGFACE_API_KEY is not set in environment variables")
     
-    # Initialize the sentence transformer model
-    model = SentenceTransformer(MODEL_NAME)
+    headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
     
-    # Generate embeddings for the sample quotes
-    print("Generating embeddings...")
-    embeddings = model.encode(SAMPLE_QUOTES, show_progress_bar=True)
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                HUGGINGFACE_API_URL,
+                headers=headers,
+                json={"inputs": texts, "options": {"wait_for_model": True}},
+                timeout=60.0
+            )
+            response.raise_for_status()
+            embeddings = response.json()
+            return np.array(embeddings)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 503:
+                # Model is loading, wait and retry
+                print("Model is loading, waiting 20 seconds...")
+                await asyncio.sleep(20)
+                response = await client.post(
+                    HUGGINGFACE_API_URL,
+                    headers=headers,
+                    json={"inputs": texts, "options": {"wait_for_model": True}},
+                    timeout=60.0
+                )
+                response.raise_for_status()
+                embeddings = response.json()
+                return np.array(embeddings)
+            else:
+                raise
+
+async def initialize_faiss_index():
+    """Initialize and save a FAISS index with sample quotes using Hugging Face API."""
+    print("Initializing FAISS index with sample data using Hugging Face API...")
+    
+    if not HUGGINGFACE_API_KEY or HUGGINGFACE_API_KEY == "your_huggingface_api_key_here":
+        print("ERROR: Please set your HUGGINGFACE_API_KEY in the .env file")
+        print("You can get a free API key from: https://huggingface.co/settings/tokens")
+        return
+    
+    # Generate embeddings for the sample quotes using Hugging Face API
+    print("Generating embeddings using Hugging Face API...")
+    embeddings = await get_embeddings_from_hf_api(SAMPLE_QUOTES)
     
     # Create and save the FAISS index
     dimension = embeddings.shape[1]
@@ -73,7 +119,7 @@ def initialize_faiss_index():
 
 if __name__ == "__main__":
     print("Initializing sample data for Business Knowledge Chat...")
-    initialize_faiss_index()
+    asyncio.run(initialize_faiss_index())
     print("\nSetup complete! You can now run the application with:")
     print("uvicorn app.main:app --reload --port 8000")
     print("\nAccess the chat interface at: http://localhost:8000")

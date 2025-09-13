@@ -15,7 +15,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
-from sentence_transformers import SentenceTransformer
+# Removed SentenceTransformer to avoid Hugging Face dependency
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +23,9 @@ class PDFProcessor:
     """Handles PDF text and table extraction"""
     
     def __init__(self):
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
-    
+        """Initialize PDFProcessor without external embedding model"""
+        pass
+        
     def extract_text_and_tables(self, pdf_path: str) -> Dict[str, Any]:
         """
         Extract text and tables from PDF using pdfplumber
@@ -170,7 +171,6 @@ class CostEstimationComparator:
     """Compares PDF content with AI-generated cost estimations"""
     
     def __init__(self):
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
     
     def compare_with_estimation(self, pdf_content: Dict[str, Any], estimation_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -260,13 +260,8 @@ class CostEstimationComparator:
         scores["fuzzy_ratio"] = fuzz.ratio(pdf_text[:1000], estimation_text[:1000]) / 100.0
         scores["fuzzy_partial_ratio"] = fuzz.partial_ratio(pdf_text[:1000], estimation_text[:1000]) / 100.0
         
-        # Sentence transformer similarity
-        try:
-            embeddings = self.model.encode([pdf_text[:500], estimation_text[:500]])
-            semantic_sim = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
-            scores["semantic_similarity"] = float(semantic_sim)
-        except:
-            scores["semantic_similarity"] = 0.0
+        # Semantic similarity (approximate): reuse TF-IDF cosine as a semantic proxy
+        scores["semantic_similarity"] = scores.get("cosine_similarity", 0.0)
         
         return scores
     
