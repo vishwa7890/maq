@@ -167,9 +167,26 @@ async def get_rag_context(query: str, max_results: int = 3) -> str:
     Returns formatted string with top matching documents.
     """
     try:
+        # Always include business-related content access information
+        business_context = """**Business-Related Content Access**
+
+This system is designed exclusively for business-related queries including:
+- Project Estimation & Services
+- Pricing & Plans  
+- Business Strategy & Planning
+- Technology Recommendations
+- Industry-Specific Solutions
+
+Please ask questions related to:
+- Project costs and timelines
+- Service quotations and pricing
+- Business strategy and planning
+- Technology recommendations for business
+- Industry-specific solutions"""
+        
         # Check if mapping file exists
         if not MAPPING_FILE.exists():
-            return "No relevant documents found - index not built"
+            return f"{business_context}\n\nNo additional relevant documents found - index not built"
             
         # Load index mapping
         with open(MAPPING_FILE) as f:
@@ -185,14 +202,38 @@ async def get_rag_context(query: str, max_results: int = 3) -> str:
         distances, indices = index.search(query_embedding, max_results)
         
         # Format results
-        results = []
+        results = [business_context]
+        
+        # Add relevant documents if found
+        document_results = []
         for i, (dist, idx) in enumerate(zip(distances[0], indices[0])):
             if str(idx) in id_to_text:
-                results.append(f"Document {i+1} (relevance: {dist:.2f}):\n{id_to_text[str(idx)]}")
+                document_results.append(f"Document {i+1} (relevance: {dist:.2f}):\n{id_to_text[str(idx)]}")
         
-        return "\n\n".join(results) if results else "No relevant documents found"
+        if document_results:
+            results.append("\n**Relevant Documents:**\n")
+            results.extend(document_results)
+        else:
+            results.append("\nNo additional relevant documents found")
+        
+        return "\n\n".join(results)
     except Exception as e:
-        return f"Error retrieving RAG context: {str(e)}"
+        business_context = """**Business-Related Content Access**
+
+This system is designed exclusively for business-related queries including:
+- Project Estimation & Services
+- Pricing & Plans  
+- Business Strategy & Planning
+- Technology Recommendations
+- Industry-Specific Solutions
+
+Please ask questions related to:
+- Project costs and timelines
+- Service quotations and pricing
+- Business strategy and planning
+- Technology recommendations for business
+- Industry-specific solutions"""
+        return f"{business_context}\n\nError retrieving additional RAG context: {str(e)}"
 
 
 # Synchronous wrapper for backward compatibility
@@ -201,14 +242,31 @@ def get_rag_context_sync(query: str, max_results: int = 3) -> str:
     Synchronous wrapper for get_rag_context.
     This is a fallback that returns a simple message when async is not available.
     """
+    # Always include business-related content access information
+    business_context = """**Business-Related Content Access**
+
+This system is designed exclusively for business-related queries including:
+- Project Estimation & Services
+- Pricing & Plans  
+- Business Strategy & Planning
+- Technology Recommendations
+- Industry-Specific Solutions
+
+Please ask questions related to:
+- Project costs and timelines
+- Service quotations and pricing
+- Business strategy and planning
+- Technology recommendations for business
+- Industry-specific solutions"""
+    
     try:
         # Try to run the async function
         import asyncio
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # If we're already in an async context, we can't use asyncio.run()
-            return "RAG context temporarily unavailable (async context conflict)"
+            return f"{business_context}\n\nRAG context temporarily unavailable (async context conflict)"
         else:
             return asyncio.run(get_rag_context(query, max_results))
     except Exception as e:
-        return f"RAG context unavailable: {str(e)}"
+        return f"{business_context}\n\nRAG context unavailable: {str(e)}"

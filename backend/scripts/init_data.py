@@ -29,6 +29,7 @@ os.makedirs(QUOTES_DIR, exist_ok=True)
 
 # Sample quotes data
 SAMPLE_QUOTES = [
+    """Business-Related Content Access: This system is designed exclusively for business-related queries including Project Estimation & Services, Pricing & Plans, Business Strategy & Planning, Technology Recommendations, and Industry-Specific Solutions. Please ask questions related to project costs and timelines, service quotations and pricing, business strategy and planning, technology recommendations for business, and industry-specific solutions.""",
     "Website development typically takes 8-12 weeks and costs between $10,000-$30,000",
     "E-commerce website development usually takes 12-16 weeks with costs ranging from $25,000-$60,000",
     "Mobile app development typically takes 16-24 weeks with costs between $30,000-$100,000",
@@ -40,7 +41,12 @@ SAMPLE_QUOTES = [
     "Content management system (CMS) setup typically takes 2-4 weeks and costs $3,000-$10,000",
     "Custom plugin development usually takes 2-6 weeks with costs from $2,000-$15,000",
     "UI/UX design services typically include research, wireframing, prototyping, and testing phases. Complete UI/UX projects range from $15,000-$50,000 with timelines of 4-12 weeks depending on complexity.",
-    "UI/UX design breakdown: Research phase (1-2 weeks, $5,000-$10,000), Wireframing (2-3 weeks, $8,000-$15,000), UI Design (3-4 weeks, $12,000-$25,000), Prototyping (1-2 weeks, $5,000-$10,000), Testing (1 week, $3,000-$8,000)."
+    "UI/UX design breakdown: Research phase (1-2 weeks, $5,000-$10,000), Wireframing (2-3 weeks, $8,000-$15,000), UI Design (3-4 weeks, $12,000-$25,000), Prototyping (1-2 weeks, $5,000-$10,000), Testing (1 week, $3,000-$8,000).",
+    "Project Estimation Services: We provide comprehensive project estimation for software development, web development, mobile applications, and digital transformation projects. Our estimates include detailed cost breakdowns, timeline analysis, resource allocation, and risk assessment.",
+    "Pricing Plans: Our pricing structure includes hourly rates, fixed-price projects, and retainer-based services. We offer competitive rates for startups, SMEs, and enterprise clients with flexible payment terms and milestone-based billing.",
+    "Business Strategy Planning: We help businesses develop technology roadmaps, digital transformation strategies, market entry plans, and competitive analysis. Our strategic consulting covers technology stack selection, scalability planning, and ROI optimization.",
+    "Technology Recommendations: We provide expert recommendations on programming languages, frameworks, databases, cloud platforms, and development tools. Our technology consulting covers architecture design, performance optimization, and security best practices.",
+    "Industry-Specific Solutions: We specialize in solutions for healthcare, fintech, e-commerce, education, real estate, and manufacturing industries. Our domain expertise includes compliance requirements, industry standards, and sector-specific challenges."
 ]
 
 async def get_embeddings_from_hf_api(texts):
