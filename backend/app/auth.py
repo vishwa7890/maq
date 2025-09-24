@@ -18,7 +18,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365 * 100  # 100 years (effectively never expires)
 
 # Password helpers
 def hash_password(password: str) -> str:
@@ -30,8 +30,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # JWT helpers
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
+    # Only add expiration if explicitly provided, otherwise create a token that never expires
+    if expires_delta is not None:
+        expire = datetime.utcnow() + expires_delta
+        to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -62,7 +64,8 @@ async def get_user_by_email(session: AsyncSession, email: str):
 # Authentication dependency
 async def get_current_user(
     request: Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    require_auth: bool = True
 ):
     """Dependency to get the current user from the JWT token in the request cookies."""
     credentials_exception = HTTPException(

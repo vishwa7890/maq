@@ -187,17 +187,17 @@ async def register(
         await db.commit()
         await db.refresh(db_user)
         
-        # Create access token for the new user
-        access_token = create_access_token({"sub": db_user.username, "user_id": db_user.id})
+        # Create access token for the new user (without expiration)
+        access_token = create_access_token({"sub": db_user.username, "user_id": db_user.id}, expires_delta=None)
         
         # Set the access token as an HTTP-only cookie
         # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
         # In production over HTTPS, set secure=True.
+        # No max_age since the token doesn't expire
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
-            max_age=86400,  # 24 hours (match JWT expiry)
             samesite="none",  # Use None for cross-site cookies in production
             secure=True,  # True in production with HTTPS
             path="/",
@@ -252,17 +252,17 @@ async def login(
         logger.warning(f"Invalid password for user: {form_data.username}")
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     
-    # Create access token
-    access_token = create_access_token({"sub": user.username, "user_id": user.id})
+    # Create access token (without expiration)
+    access_token = create_access_token({"sub": user.username, "user_id": user.id}, expires_delta=None)
     
     # Set the access token as an HTTP-only cookie
     # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
     # In production over HTTPS, set secure=True.
+    # No max_age since the token doesn't expire
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        max_age=86400,  # 24 hours (match JWT expiry)
         samesite="none",  # Use None for cross-site cookies in production
         secure=True,  # True in production with HTTPS
         path="/",
