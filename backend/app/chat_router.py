@@ -383,6 +383,94 @@ def fix_table_formatting(text: str) -> str:
     
     return '\n'.join(fixed_lines)
 
+def enforce_tables_only(text: str) -> str:
+    """Remove any non-table content (headings, paragraphs) and keep only markdown tables.
+
+    Rules:
+    - Keep lines that contain '|' or are empty lines between tables.
+    - Drop headings (lines starting with '#') and any paragraphs without '|'.
+    - Preserve separator lines like '| --- |' and alignment variants with ':' characters.
+    """
+    if not text:
+        return text
+    lines = text.split('\n')
+    kept: List[str] = []
+    in_table = False
+    for line in lines:
+        stripped = line.strip()
+        # Skip code fences or headings
+        if stripped.startswith('```') or stripped.startswith('#'):
+            in_table = False
+            continue
+        # Determine if line is part of a table
+        is_table_line = '|' in stripped
+        if is_table_line:
+            in_table = True
+            # Ensure it starts/ends with pipe for safety; fix_table_formatting will finalize
+            if not stripped.startswith('|'):
+                stripped = '| ' + stripped
+            if not stripped.endswith('|'):
+                stripped = stripped + ' |'
+            kept.append(stripped)
+        else:
+            # Allow blank lines only to separate tables
+            if in_table and stripped == '':
+                kept.append('')
+            else:
+                in_table = False
+                # drop non-table content
+                continue
+    cleaned = '\n'.join(kept).strip()
+    # Final pass to fix any header separator issues
+    return fix_table_formatting(cleaned)
+
+def generate_default_estimate_tables() -> str:
+    """Return a minimal, valid set of markdown tables for estimates as a fallback.
+
+    This is used when the model returns prose and table enforcement strips everything.
+    Keeps the UX consistent with table-only policy.
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+    parts = []
+    parts.append(
+        "| Section | Details |\n"
+        "| --- | --- |\n"
+        "| Client Name | [Client's Name] |\n"
+        "| Project Name | [Project Title] |\n"
+        f"| Date | {today} |\n"
+    )
+    parts.append(
+        "| Scope/Assumptions | Details |\n"
+        "| --- | --- |\n"
+        "| Objective | [Brief project goal] |\n"
+        "| Data | [Availability/size/format] |\n"
+        "| Quality/SLAs | [Targets] |\n"
+        "| Compliance | [If any] |\n"
+    )
+    parts.append(
+        "| Phase | Key Tasks | Hours | Rate (₹/hr) | Subtotal (₹) |\n"
+        "| --- | --- | ---: | ---: | ---: |\n"
+        "| Discovery | Requirements, planning | 12 | 2,000 | 24,000 |\n"
+        "| Implementation | Core work | 60 | 2,200 | 132,000 |\n"
+        "| Testing | QA, fixes | 16 | 2,000 | 32,000 |\n"
+        "| Total |  | 88 |  | 188,000 |\n"
+    )
+    parts.append(
+        "| Timeline | Start | End | Duration |\n"
+        "| --- | --- | --- | --- |\n"
+        "| Phase 1 | Week 1 | Week 2 | 2 weeks |\n"
+        "| Phase 2 | Week 3 | Week 6 | 4 weeks |\n"
+    )
+    parts.append(
+        "| Clarifying Question | Response Needed |\n"
+        "| --- | --- |\n"
+        "| Scope details? | ___ |\n"
+        "| Preferred stack/cloud? | ___ |\n"
+        "| Deadline or milestones? | ___ |\n"
+        "| Maintenance/support? | ___ |\n"
+    )
+    return "\n\n".join(parts)
+
 def format_chat_history(messages: List[Dict[str, str]]) -> str:
     """Format chat history for the model, cleaning up any unwanted text or formatting."""
     formatted = []
@@ -501,13 +589,14 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
                     
                     logger.info(f"Received response (length: {len(response_text)} chars)")
                     
-                    # Ensure we always return valid markdown
-                    response_text = response_text or "No content generated"
-                    if not response_text.startswith('#') and not response_text.startswith('**'):
-                        response_text = f"**Response**:\n{response_text}"
-                    
-                    # Fix table formatting if needed
-                    response_text = fix_table_formatting(response_text)
+                    # Ensure we always return valid markdown and enforce table-only output
+                    original_text = response_text or ""
+                    response_text = enforce_tables_only(original_text)
+                    if not response_text.strip():
+                        # Fallback: if the model produced no tables and everything was stripped,
+                        # return a default, valid table scaffold so the UI never sees empty content.
+                        logger.warning("Model returned no table content; using default estimate tables fallback.")
+                        response_text = generate_default_estimate_tables()
                     
                     # Ensure we always return a valid string response
                     response_text = str(response_text or "").strip()
@@ -845,7 +934,96 @@ Example:
 Use the exact table format specified in the system prompt.
 """
             else:
-                enhanced_prompt = f"""
+                # Specialized AI/ML cost estimation branch
+                ai_ml_triggers = [
+                    'ai', 'a.i.', 'machine learning', 'ml', 'data science', 'model', 'training', 'inference',
+                    'llm', 'fine-tune', 'fine tune', 'dataset', 'feature engineering', 'mlops', 'deployment',
+                    'computer vision', 'nlp', 'natural language', 'recommendation', 'predictive', 'classification',
+                    'regression', 'forecast'
+                ]
+                cost_triggers = ['cost', 'estimate', 'estimation', 'pricing', 'budget', 'quotation', 'quote']
+                if any(k in user_query for k in ai_ml_triggers) and any(k in user_query for k in cost_triggers):
+                    enhanced_prompt = f"""
+User Query: {request.content}
+
+IMPORTANT: Provide a professional AI/ML project cost estimate using ONLY markdown tables. No headings or paragraphs. Start with the summary table.
+
+Business Context: {knowledge_graph.get_business_context(request.content)}
+Reference Documents: {get_rag_context_sync(request.content, max_results=3)}
+
+REQUIRED TABLES AND FORMATS (use INR - ₹):
+
+| Section | Details |
+| --- | --- |
+| Client Name | [Client's Name] |
+| Project Name | [Project Title] |
+| Date | {datetime.now().strftime('%Y-%m-%d')} |
+
+| Scope/Assumptions | Details |
+| --- | --- |
+| Objective | [e.g., Build an ML model for ...] |
+| Data Availability | [Existing/To be collected, size, format] |
+| Quality/SLAs | [Accuracy, latency targets] |
+| Compliance | [PII/PHI, GDPR, SOC2 etc.] |
+
+| Phase | Key Tasks | Hours | Rate (₹/hr) | Subtotal (₹) | Owner |
+| --- | --- | ---: | ---: | ---: | --- |
+| Data Acquisition | Source integration, permissions | 24 | 2,000 | 48,000 | Data Eng |
+| Data Engineering | Cleaning, feature engineering | 60 | 2,000 | 120,000 | Data Eng |
+| Modeling | Baselines, experiments, tuning | 80 | 2,500 | 200,000 | ML Eng |
+| Evaluation | Metrics, validation, reports | 32 | 2,500 | 80,000 | ML Eng |
+| MLOps | CI/CD, model registry, versioning | 40 | 2,500 | 100,000 | MLOps |
+| Deployment | API/service, scaling, security | 36 | 2,500 | 90,000 | Platform |
+| Monitoring | Drift detection, alerts, dashboards | 24 | 2,000 | 48,000 | MLOps |
+| PM/Meetings | Planning, reviews, communication | 24 | 2,000 | 48,000 | PM |
+| Total |  | 320 |  | 734,000 |  |
+
+| Cloud/Infra | Qty | Unit | Rate (₹) | Monthly Cost (₹) |
+| --- | ---: | --- | ---: | ---: |
+| GPU compute (A10) | 2 | instances | 45,000 | 90,000 |
+| Storage (S3/Blob) | 500 | GB | 2 | 1,000 |
+| Data transfer | 1 | TB | 5 | 5,000 |
+| Total |  |  |  | 96,000 |
+
+| One-Time Costs | Amount (₹) |
+| --- | ---: |
+| 3rd‑party APIs/Licenses | 50,000 |
+| Security/Compliance setup | 25,000 |
+| Total | 75,000 |
+
+| Timeline | Start | End | Duration |
+| --- | --- | --- | --- |
+| Data & Engineering | Week 1 | Week 3 | 3 weeks |
+| Modeling & Eval | Week 3 | Week 6 | 4 weeks |
+| MLOps & Deploy | Week 5 | Week 7 | 3 weeks |
+| UAT & Handover | Week 7 | Week 8 | 2 weeks |
+
+| Risks/Dependencies | Impact | Mitigation |
+| --- | --- | --- |
+| Data quality issues | Medium | Profiling, cleansing pipelines |
+| Scope creep | High | Change control, buffer 15% |
+| Infra limits | Medium | Autoscaling, cost alerts |
+
+{"Include discount/payment terms only if the user asked for a quote/quotation"}
+
+If 'quote' or 'quotation' is detected in the user query, also include:
+
+| Pricing | Details |
+| --- | --- |
+| Subtotal (Services) | [auto-sum from WBS] |
+| Subtotal (Infra, 1 mo) | [from cloud table] |
+| One‑Time Costs | [from one-time table] |
+| Discount | [e.g., 5% for >100 hrs] |
+| Grand Total | [computed] |
+| Payment Terms | 50% advance, 50% on completion |
+
+CRITICAL:
+- Respond only with tables as above. No headings or prose.
+- Use consistent columns with separators (| --- |) and totals rows in each table.
+- Use ₹ for all amounts.
+"""
+                else:
+                    enhanced_prompt = f"""
 User Query: {request.content}
 
                 
