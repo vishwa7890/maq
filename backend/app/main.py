@@ -85,7 +85,7 @@ app = FastAPI(
 )
 
 # CORS configuration
-# Read comma-separated origins from env, e.g. "https://luminaque.netlify.app,https://example.com"
+# Read comma-separated origins from env, e.g. "https://luminaquo.mindapt.in,https://example.com"
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 allow_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 
@@ -94,8 +94,15 @@ if not allow_origins:
     frontend_url = os.getenv("FRONTEND_URL", "")
     if frontend_url:
         allow_origins.append(frontend_url)
-    # Add localhost for development
-    allow_origins.extend(["http://localhost:3000", "http://localhost:3001"])
+    # Add common development and production URLs
+    allow_origins.extend([
+        "http://localhost:3000", 
+        "http://localhost:3001",
+        "https://luminaquo.mindapt.in"
+    ])
+
+# Remove any empty strings and ensure unique origins
+allow_origins = list(set(filter(None, allow_origins)))
 
 # Log CORS configuration for debugging
 logger.info(f"CORS_ORIGINS env: '{cors_origins_env}'")
@@ -106,7 +113,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
