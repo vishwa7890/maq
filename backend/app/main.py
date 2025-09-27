@@ -98,8 +98,22 @@ if not allow_origins:
     allow_origins.extend([
         "http://localhost:3000", 
         "http://localhost:3001",
-        "https://luminaquo.mindapt.in"
+        "https://luminaquo.mindapt.in",
+        "https://lumina-nbzx.onrender.com"
     ])
+
+# Remove any empty strings
+allow_origins = [origin for origin in allow_origins if origin]
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
+)
 
 # Remove any empty strings and ensure unique origins
 allow_origins = list(set(filter(None, allow_origins)))
@@ -229,76 +243,147 @@ async def register(
 @app.post("/auth/login", response_model=dict)
 async def login(
     response: Response,
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
-    logger.info(f"Login attempt for username: {form_data.username}")
+    logger.info(f"Login attempt for username: {form_data.username} from {request.client.host}")
+    logger.debug(f"Request headers: {dict(request.headers)}")
     
     # Try direct query approach
     try:
         from sqlalchemy.future import select
         result = await db.execute(select(User).where(User.username == form_data.username))
         user = result.scalars().first()
-        logger.info(f"Direct query result - User found: {user is not None}")
+        logger.info(f"User found: {user is not None}")
         
-        if user:
-            logger.info(f"User details: id={user.id}, username={user.username}, role={getattr(user, 'role', 'unknown')}")
+        if not user:
+            logger.warning(f"User not found: {form_data.username}")
+            raise HTTPException(
+                status_code=401, 
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+            
+        logger.info(f"User details - id: {user.id}, email: {getattr(user, 'email', 'N/A')}")
         
+        # Verify password
+        password_valid = verify_password(form_data.password, user.hashed_password)
+        logger.info(f"Password verification result: {password_valid}")
+        
+        if not password_valid:
+            logger.warning(f"Invalid password for user: {form_data.username}")
+            raise HTTPException(
+                status_code=401, 
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        
+        # Create access token with user info
+        token_data = {
+            "sub": user.username,
+            "user_id": user.id,
+            "email": getattr(user, 'email', ''),
+            "role": getattr(user, 'role', 'normal')
+        }
+        access_token = create_access_token(token_data, expires_delta=timedelta(days=30))
+        
+        # Prepare response data
+        frontend_url = os.getenv("FRONTEND_URL", "")
+        response_data = {
+            "message": "Login successful",
+            "access_token": access_token,  # Also return token in response body for flexibility
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": getattr(user, 'email', ''),
+                "role": getattr(user, 'role', 'normal')
+            },
+            "redirect": f"{frontend_url}/chat" if frontend_url else "/chat"
+        }
+        
+        # Set HTTP-only cookie
+        cookie_domain = ".mindapt.in" if "mindapt.in" in (frontend_url or "") else None
+        cookie_secure = frontend_url.startswith("https") if frontend_url else True
+        
+        logger.info(f"Setting cookie with domain: {cookie_domain}, secure: {cookie_secure}")
+        
+        response.set_cookie(
+            key="access_token",
+            value=f"Bearer {access_token}",  # Include 'Bearer ' prefix
+            httponly=True,
+            secure=cookie_secure,
+            samesite="none" if cookie_secure else "lax",
+            path="/",
+            domain=cookie_domain,
+            max_age=30 * 24 * 60 * 60  # 30 days in seconds
+        )
+        
+        # Set CORS headers
+        if frontend_url:
+            response.headers["Access-Control-Allow-Origin"] = frontend_url
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+        logger.info(f"Login successful for user: {user.username}")
+        return response_data
+        
+    except HTTPException as he:
+        # Re-raise HTTP exceptions
+        raise he
     except Exception as e:
-        logger.error(f"Direct query failed: {e}")
-        user = None
-    
-    if not user:
-        logger.warning(f"User not found: {form_data.username}")
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
-    
-    password_valid = verify_password(form_data.password, user.hashed_password)
-    logger.info(f"Password verification result: {password_valid}")
-    
-    if not password_valid:
-        logger.warning(f"Invalid password for user: {form_data.username}")
-        raise HTTPException(status_code=401, detail="Incorrect username or password")
-    
-    # Create access token (without expiration)
-    access_token = create_access_token({"sub": user.username, "user_id": user.id}, expires_delta=None)
-    
-    # Set the access token as an HTTP-only cookie
-    # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
-    # In production over HTTPS, set secure=True.
-    # No max_age since the token doesn't expire
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        samesite="none",  # Use None for cross-site cookies in production
-        secure=True,  # True in production with HTTPS
-        path="/",
-    )
-    
-    # Return success response with redirect URL
-    frontend_url = os.getenv("FRONTEND_URL")
-    return {"message": "Login successful", "redirect": f"{frontend_url}/chat"}
+        logger.error(f"Unexpected error during login: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred during login"
+        )
 
 @app.post("/auth/logout")
 async def logout(response: Response):
     """Logout user by clearing the authentication cookie."""
+    # Clear the cookie with the same settings used when setting it
     response.delete_cookie(
         key="access_token",
-        httponly=True,
-        samesite="none",
-        secure=True,  # Match cookie attributes to ensure deletion in production
         path="/",
+        domain=".mindapt.in" if "mindapt.in" in (os.getenv("FRONTEND_URL", "") or "") else None,
+        samesite="none",
+        secure=True
     )
-    frontend_url = os.getenv("FRONTEND_URL")
-    return {"message": "Successfully logged out", "redirect": f"{frontend_url}/auth"}
+    
+    # Add CORS headers
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    if frontend_url:
+        response.headers["Access-Control-Allow-Origin"] = frontend_url
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+    return {"message": "Successfully logged out"}
 
+@app.get("/auth/debug")
+async def debug_auth(request: Request):
+    """Debug endpoint to check authentication status and cookies."""
+    return {
+        "cookies": dict(request.cookies),
+        "headers": dict(request.headers),
+        "client": str(request.client),
+        "url": str(request.url)
+    }
 
 @app.get("/auth/me", response_model=dict)
-async def me(current_user: User = Depends(get_current_user)):
+async def me(request: Request, current_user: User = Depends(get_current_user)):
     """Return the current authenticated user's info."""
     if not current_user:
+        # Log the request details for debugging
+        logger.warning(f"Unauthenticated request to /auth/me. Cookies: {request.cookies}")
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {
+    
+    # Add CORS headers
+    response_headers = {}
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    if frontend_url:
+        response_headers["Access-Control-Allow-Origin"] = frontend_url
+        response_headers["Access-Control-Allow-Credentials"] = "true"
+    
+    user_data = {
         "id": getattr(current_user, 'id', None),
         "username": getattr(current_user, 'username', None),
         "email": getattr(current_user, 'email', None),
