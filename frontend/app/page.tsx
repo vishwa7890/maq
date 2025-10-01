@@ -33,23 +33,32 @@ export default function LandingPage() {
         <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-4xl mx-auto mb-6 sm:mb-8 px-4">
           Create beautiful, professional quotations with AI assistance. Export to PDF or Word, customize templates, and impress your clients – anytime, anywhere.
         </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-8 px-4">
+        <div className="flex flex-col sm:flex-row justify-center gap-4 mb-8 px-4">
           <Link href="/auth" className="w-full sm:w-auto">
-            <Button size="lg" className="w-full sm:w-auto px-6 sm:px-8 py-3 text-base sm:text-lg">
-              [Generate Your First Quotation]
+            <Button size="lg" className="w-full sm:w-auto px-8 py-3 text-base sm:text-lg">
+              Generate Your First Quotation
             </Button>
           </Link>
-          <Link href="/chat" className="w-full sm:w-auto">
-            <Button size="lg" variant="outline" className="w-full sm:w-auto px-6 sm:px-8 py-3 text-base sm:text-lg">
+          <a 
+            href="https://lumina-quo.mindapt.in/demo" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto"
+          >
+            <Button 
+              variant="outline" 
+              size="lg" 
+              className="w-full sm:w-auto px-8 py-3 text-base sm:text-lg border-2"
+            >
               View Demo
             </Button>
-          </Link>
+          </a>
         </div>
         
         {/* Demo Card */}
-        <div className="w-full max-w-md mx-4 sm:mx-auto bg-white rounded-2xl shadow-2xl p-4 sm:p-6 border">
-          <div className="text-left">
-            <div className="flex items-center gap-2 text-green-600 mb-3">
+        <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-2xl p-4 sm:p-6 border">
+          <div className="text-center sm:text-left">
+            <div className="flex items-center justify-center sm:justify-start gap-2 text-green-600 mb-3">
               <Check className="h-5 w-5" />
               <span className="font-semibold">Quotation Generated Successfully ✨</span>
             </div>
@@ -150,7 +159,7 @@ export default function LandingPage() {
                 </div>
               </div>
               <Link href="/auth" className="block">
-                <Button className="w-full mt-6">[Generate Your First Quotation]</Button>
+                <Button className="w-full mt-6">Generate Your First Quotation</Button>
               </Link>
             </CardContent>
           </Card>
