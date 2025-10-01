@@ -1,4 +1,8 @@
-import { NextResponse } from 'next/server'
+import { handleApiError } from '@/lib/error-handler';
+
+// Disable static generation for this route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // This is the URL of your backend API
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -29,15 +33,20 @@ export async function POST(request: Request) {
     }
 
     const data = await response.json()
-    return NextResponse.json(data)
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Thank you for your feedback! We appreciate your input.',
+        data
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
     
   } catch (error) {
-    console.error('Error submitting feedback:', error)
-    return new NextResponse(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Failed to submit feedback' 
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return handleApiError(error, {
+      action: 'submit your feedback',
+      feature: 'feedback form',
+      details: 'Please try again in a few moments.'
+    });
   }
 }
