@@ -5,6 +5,7 @@ import hashlib
 import time
 import uuid
 import shutil
+import io
 from functools import lru_cache
 from pathlib import Path
 import asyncio
@@ -12,18 +13,24 @@ from datetime import datetime, timedelta
 import httpx
 from fastapi import (
     APIRouter, Depends, HTTPException, Request, 
-    BackgroundTasks, status, UploadFile, File, Body, Query, Header
+    BackgroundTasks, status, UploadFile, File, Body, Query, Header, Response
 )
 from typing import List, Dict, Any, Optional, Union, Tuple
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
 
 # Initialize logger
 logger = logging.getLogger(__name__)
+
+# Configuration constants
+CHAT_HISTORY_LIMIT = 50  # Default number of messages to return for chat history
 
 # RL Optimizer will be initialized after SYSTEM_PROMPT is defined
 rl_optimizer = None
@@ -41,12 +48,14 @@ from app.schemas import (
     ChatSessionResponse, 
     ChatMessageCreate, 
     ChatMessageResponse,
-    QuoteRequest as QuoteRequestModel
+    QuoteRequest as QuoteRequestModel,
+    PremiumQuotationRequest
 )
 from app.knowledge_graph import BusinessKnowledgeGraph, Entity
 from app.rag_engine import get_rag_context, get_rag_context_sync
 from models.base import get_db
 from app.auth import get_current_user
+from app.premium_utils import PremiumQuotationGenerator
 
 # Initialize router
 router = APIRouter()
@@ -128,7 +137,7 @@ try:
 except Exception as e:
     logger.error(f"Failed to load system prompt from file: {e}")
     # Fallback to default prompt
-    SYSTEM_PROMPT = """You are Lumina Quo AI, an expert in business quotes and estimates. Your goal is to provide accurate, relevant, and actionable business advice with properly formatted tables.
+    SYSTEM_PROMPT = """You are VilaiMathi AI, an expert in business quotes and estimates. Your goal is to provide accurate, relevant, and actionable business advice with properly formatted tables.
 
 **IMPORTANT: This system is designed exclusively for business-related queries. You should only respond to questions about:**
 
@@ -532,7 +541,7 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
                 "Authorization": f"Bearer {API_KEY}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://your-site.com",  # Required by OpenRouter
-                "X-Title": "Lumina Quo AI"  # Your app name
+                "X-Title": "VilaiMathi AI"  # Your app name
             }
             
             # OpenRouter expects messages in the chat format
@@ -1436,10 +1445,19 @@ async def get_session_messages(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get messages for a specific chat session"""
-    # Use CHAT_HISTORY_LIMIT if no specific limit is provided
+    """
+    Get messages for a specific chat session.
+    
+    Premium users have no message limit, while free users are limited to CHAT_HISTORY_LIMIT.
+    """
+    # Check if user is premium and no specific limit is provided
     if limit is None:
-        limit = CHAT_HISTORY_LIMIT
+        if current_user.role == 'premium':
+            # No limit for premium users
+            limit = None
+        else:
+            # Apply default limit for free users
+            limit = CHAT_HISTORY_LIMIT
         
     try:
         # Verify session belongs to user
@@ -1458,14 +1476,20 @@ async def get_session_messages(
                 detail="Session not found or access denied"
             )
         
-        # Get messages for this session
-        messages_result = await db.execute(
+        # Build the base query
+        query = (
             select(ChatMessageORM)
             .where(ChatMessageORM.session_id == session.id)
             .order_by(ChatMessageORM.timestamp.asc())
-            .limit(limit)
             .offset(offset)
         )
+        
+        # Only apply limit for non-premium users or when explicitly set
+        if limit is not None:
+            query = query.limit(limit)
+            
+        # Execute the query
+        messages_result = await db.execute(query)
         
         messages = messages_result.scalars().all()
         return [
@@ -1551,8 +1575,9 @@ async def create_message(
 
 class BusinessChatRequest(BaseModel):
     message: str
-    session_id: Optional[str] = None  # For maintaining conversation context
-    context: Optional[Dict[str, Any]] = None  # Additional context if needed
+    session_id: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
+    is_premium: bool = Field(default=False, description="Whether this is a premium user request")
 
 # Now initialize RL Optimizer after SYSTEM_PROMPT is defined
 try:
@@ -1686,17 +1711,66 @@ if 'quote_generator' not in globals():
     quote_generator = QuoteGenerator(base_prompt=SYSTEM_PROMPT)
 
 @router.post("/track_interaction")
-async def track_interaction(interaction: QuoteInteraction):
-    """Track how users interact with generated quotes."""
+async def track_interaction(
+    interaction: QuoteInteraction, 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Track how users interact with generated quotes.
+    
+    Args:
+        interaction: The interaction details
+        db: Database session
+    """
     try:
-        quote_generator.track_quote_interaction(
-            quote_id=interaction.quote_id,
-            interaction_type=interaction.interaction_type,
-            metadata=interaction.metadata or {}
-        )
-        return {"status": "success", "message": "Interaction tracked successfully"}
+        logger.info(f"Tracking interaction: {interaction}")
+        
+        # Create a new interaction record
+        interaction_data = interaction.dict()
+        interaction_data['metadata'] = json.dumps(interaction_data.get('metadata', {}))
+        
+        # Convert features_used to a JSON string if it exists
+        if 'features_used' in interaction_data and interaction_data['features_used'] is not None:
+            interaction_data['features_used'] = json.dumps(interaction_data['features_used'])
+        
+        # Check edit limit for non-premium users
+        if interaction.interaction_type == 'edit':
+            user = await db.get(User, interaction.user_id)
+            if user and user.role != 'premium':
+                # Count previous edits by this user
+                edit_count = await db.execute(
+                    select(func.count(QuoteInteractionORM.id)).where(
+                        (QuoteInteractionORM.user_id == interaction.user_id) &
+                        (QuoteInteractionORM.interaction_type == 'edit')
+                    )
+                )
+                edit_count = edit_count.scalar() or 0
+                
+                if edit_count >= 5:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Free users are limited to 5 quote edits. Upgrade to premium for unlimited edits."
+                    )
+        
+        # Create the interaction record
+        interaction_orm = QuoteInteractionORM(**interaction_data)
+        db.add(interaction_orm)
+        
+        # If this is a quote generation, update the user's quote count
+        if interaction.interaction_type == 'generate':
+            user = await db.get(User, interaction_data.get('user_id'))
+            if user and user.role != 'premium':
+                user.quotes_used = (user.quotes_used or 0) + 1
+                db.add(user)
+        
+        await db.commit()
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error tracking interaction: {str(e)}", exc_info=True)
+        logger.error(f"Error tracking interaction: {e}", exc_info=True)
+        # Don't raise the exception to avoid failing the main operation
+        await db.rollback()
         return {"status": "error", "message": str(e)}
 
 # Chat session management endpoints
@@ -1705,290 +1779,253 @@ async def get_chat_sessions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all chat sessions for the current user"""
+    """Get all chat sessions for the current user."""
     try:
         result = await db.execute(
             select(ChatSessionORM)
-            .where(ChatSessionORM.user_id == current_user.id)
+            .filter(ChatSessionORM.user_id == current_user.id)
             .order_by(ChatSessionORM.updated_at.desc())
         )
         sessions = result.scalars().all()
-        
-        session_list = []
-        for session in sessions:
-            # Count messages in this session
-            message_count_result = await db.execute(
-                select(ChatMessageORM)
-                .where(ChatMessageORM.session_id == session.id)
-            )
-            message_count = len(message_count_result.scalars().all())
-            
-            session_list.append({
-                "id": session.id,
-                "session_uuid": session.session_uuid,
+        return [
+            {
+                "id": str(session.id),
                 "title": session.title,
                 "created_at": session.created_at.isoformat(),
                 "updated_at": session.updated_at.isoformat(),
-                "message_count": message_count
-            })
-        
-        return session_list
+                "message_count": session.message_count or 0,
+                "is_archived": session.is_archived or False,
+                "metadata": session.metadata or {}
+            }
+            for session in sessions
+        ]
     except Exception as e:
         logger.error(f"Error fetching chat sessions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch chat sessions")
-
-@router.post("/sessions/")
-async def create_chat_session(
-    session_data: dict,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Create a new chat session"""
-    try:
-        new_session = ChatSessionORM(
-            user_id=current_user.id,
-            quai_id=current_user.quai_id,
-            title=session_data.get('title', 'New Chat')
-        )
-        db.add(new_session)
-        await db.commit()
-        await db.refresh(new_session)
-        
-        return {
-            "id": new_session.id,
-            "session_uuid": new_session.session_uuid,
-            "title": new_session.title,
-            "created_at": new_session.created_at.isoformat(),
-            "updated_at": new_session.updated_at.isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Error creating chat session: {e}")
-        await db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create chat session")
-
-@router.patch("/sessions/{session_uuid}")
-async def update_chat_session(
-    session_uuid: str,
-    update_data: dict,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Update a chat session"""
-    try:
-        # Log the incoming request data for debugging
-        logger.info(f"Updating chat session {session_uuid} with data: {update_data}")
-        
-        # Start a transaction
-        async with db.begin():
-            # Get the chat session with proper locking to prevent concurrent updates
-            result = await db.execute(
-                select(ChatSessionORM)
-                .where(ChatSessionORM.session_uuid == session_uuid)
-                .where(ChatSessionORM.user_id == current_user.id)
-                .with_for_update()
-            )
-            session = result.scalar_one_or_none()
-            
-            if not session:
-                logger.warning(f"Chat session {session_uuid} not found for user {current_user.id}")
-                raise HTTPException(status_code=404, detail="Chat session not found")
-            
-            # Update fields from the request
-            if 'title' in update_data and update_data['title']:
-                session.title = update_data['title']
-                session.updated_at = datetime.utcnow()
-                logger.info(f"Updated session {session_uuid} title to: {session.title}")
-            
-            # Commit the transaction
-            await db.commit()
-        
-        # Refresh the session to get updated values
-        await db.refresh(session)
-        
-        # Return the updated session data
-        return {
-            "id": session.id,
-            "session_uuid": session.session_uuid,
-            "title": session.title,
-            "updated_at": session.updated_at.isoformat()
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating chat session: {e}")
-        await db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to update chat session")
-
-@router.delete("/sessions/{session_uuid}")
-async def delete_chat_session(
-    session_uuid: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Delete a chat session and all its related messages and documents"""
-    try:
-        # Start a transaction
-        async with db.begin():
-            # Get the session with all relationships loaded
-            stmt = (
-                select(ChatSessionORM)
-                .options(
-                    selectinload(ChatSessionORM.messages),
-                    selectinload(ChatSessionORM.documents)
-                )
-                .where(ChatSessionORM.session_uuid == session_uuid)
-                .where(ChatSessionORM.user_id == current_user.id)
-            )
-            result = await db.execute(stmt)
-            session = result.scalar_one_or_none()
-            
-            if not session:
-                raise HTTPException(status_code=404, detail="Chat session not found")
-            
-            # Explicitly delete all messages first
-            for message in session.messages:
-                await db.delete(message)
-            
-            # Explicitly delete all documents
-            for document in session.documents:
-                await db.delete(document)
-            
-            # Flush to ensure all deletes are processed
-            await db.flush()
-            
-            # Now delete the session
-            await db.delete(session)
-            
-        return {"message": "Chat session and all related data deleted successfully"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting chat session: {e}", exc_info=True)
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete chat session: {str(e)}"
+            detail="Failed to fetch chat sessions"
         )
 
-@router.get("/sessions/{session_uuid}/messages")
-async def get_session_messages(
-    session_uuid: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get all messages for a specific chat session"""
-    try:
-        # Verify session belongs to user
-        session_result = await db.execute(
-            select(ChatSessionORM)
-            .where(ChatSessionORM.session_uuid == session_uuid)
-            .where(ChatSessionORM.user_id == current_user.id)
-        )
-        session = session_result.scalar_one_or_none()
-        
-        if not session:
-            raise HTTPException(status_code=404, detail="Chat session not found")
-        
-        # Get messages
-        result = await db.execute(
-            select(ChatMessageORM)
-            .where(ChatMessageORM.session_id == session.id)
-            .order_by(ChatMessageORM.timestamp)
-        )
-        messages = result.scalars().all()
-        
-        return [{
-            "id": msg.id,
-            "role": msg.role,
-            "content": msg.content,
-            "timestamp": msg.timestamp.isoformat()
-        } for msg in messages]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching session messages: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch session messages")
+# Premium features configuration
+PREMIUM_FEATURES = {
+    'unlimited_quotes': True,
+    'watermark_free': True,
+    'high_quality_pdf': True,
+    'custom_branding': True,
+    'priority_support': True
+}
 
-# Analytics endpoints
-@router.get("/analytics/stats")
-async def get_analytics_stats():
-    """Get summary statistics for the dashboard."""
-    try:
-        # In a real implementation, this would query your database
-        # For now, we'll return mock data
-        return {
-            "totalQuotes": len(quote_generator.quote_history) if quote_generator else 0,
-            "avgEngagement": 0.65,  
-            "topPromptScore": 0.82,  
-            "topPromptDesc": quote_generator.get_best_prompt()[:100] + "..." if quote_generator else "N/A"
-        }
-    except Exception as e:
-        logger.error(f"Error getting analytics stats: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Premium feature flags with descriptions for the frontend
+PREMIUM_FEATURE_DESCRIPTIONS = {
+    'unlimited_quotes': 'Generate unlimited professional quotations',
+    'watermark_free': 'Export documents without watermarks',
+    'high_quality_pdf': 'High-quality PDF exports with professional formatting',
+    'custom_branding': 'Add your company logo and branding to documents',
+    'priority_support': 'Priority email and chat support'
+}
 
-
-@router.get("/analytics/interactions")
-async def get_interaction_analytics():
-    """Get interaction data for the dashboard."""
-    try:
-        # In a real implementation, this would query your database
-        # For now, we'll return mock data
-        return {
-            "timeSeries": {
-                "labels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-                "values": [12, 19, 3, 5, 2, 3, 15]
-            },
-            "byType": {
-                "labels": ["View", "Download", "Copy", "Edit", "Share"],
-                "values": [300, 150, 80, 40, 30]
-            },
-            "recent": [
-                {
-                    "quote_id": "abc123xyz",
-                    "timestamp": "2023-06-15T14:30:00Z",
-                    "interaction_type": "download",
-                    "metadata": {"source": "button"}
-                },
-                {
-                    "quote_id": "def456uvw",
-                    "timestamp": "2023-06-15T14:25:00Z",
-                    "interaction_type": "copy",
-                    "metadata": {"text_length": 42}
-                }
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Error getting interaction analytics: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Chat request models
-class ChatRequest(BaseModel):
-    role: str = "user"
-    content: str
-    chat_id: Optional[str] = None  # Session UUID to link messages to sessions
-    history: List[Dict[str, str]] = []
-
-class FeedbackRequest(BaseModel):
-    message_id: str
-    feedback: str
-    session_id: Optional[str] = None
-    user_query: Optional[str] = None
-    assistant_response: Optional[str] = None
-
-# Chat configuration
-CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
-MAX_CHATS_FOR_NORMAL_USERS = 10  # Maximum number of chat sessions for normal users
-
-# In-memory cache for recent estimates
+# In-memory cache for recent estimates (replace with Redis in production)
 RECENT_ESTIMATES = []
-MAX_RECENT_ESTIMATES = int(os.getenv("MAX_RECENT_ESTIMATES", "10"))
+MAX_RECENT_ESTIMATES = 10
 
 @router.get("/estimates/recent")
 async def get_recent_estimates(limit: int = 5):
     """Get recent estimates from the cache."""
-    return {"estimates": RECENT_ESTIMATES[-limit:]}
+    return RECENT_ESTIMATES[-limit:]
+
+def check_quote_limit(user: User) -> bool:
+    """Check if user has reached their quote limit."""
+    if user.role == 'premium':
+        return False  # Premium users have no limit
+    return (user.quotes_used or 0) >= MAX_QUOTES_FOR_NORMAL_USERS
+
+@router.post("/quotes/generate", response_model=QuoteResponse)
+async def generate_quote(
+    quote_request: Union[QuoteRequestModel, PremiumQuotationRequest],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate a professional quotation with detailed breakdown.
+    
+    For premium users, includes additional features like custom branding and watermark-free exports.
+    """
+    try:
+        # Check if user has reached their quote limit
+        if check_quote_limit(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"You've reached your monthly limit of {MAX_QUOTES_FOR_NORMAL_USERS} quotes. "
+                    "Upgrade to Premium for unlimited quotes and premium features."
+                )
+            )
+        
+        # Convert to dict for processing
+        quote_data = quote_request.dict()
+        
+        # Check if this is a premium request
+        is_premium = current_user.role == 'premium' or isinstance(quote_request, PremiumQuotationRequest)
+        
+        # Generate the quotation
+        quotation_generator = PremiumQuotationGenerator()
+        
+        # For premium users, use premium features
+        if is_premium and isinstance(quote_request, PremiumQuotationRequest):
+            # Handle premium-specific features
+            include_watermark = quote_data.get('include_watermark', False)
+            custom_logo = quote_data.get('custom_logo_url')
+            custom_terms = quote_data.get('custom_terms', [])
+            
+            # Add custom terms if provided
+            if custom_terms and isinstance(custom_terms, list):
+                if 'terms' not in quote_data:
+                    quote_data['terms'] = []
+                quote_data['terms'].extend(custom_terms)
+            
+            # Generate the quotation with premium features
+            quotation = quotation_generator.generate_quotation(quote_data, {
+                'id': current_user.id,
+                'email': current_user.email,
+                'name': current_user.username
+            })
+            
+            # Track this interaction
+            interaction = QuoteInteraction(
+                quote_id=quotation['quotation_id'],
+                interaction_type='generate',
+                user_role='premium',
+                features_used=['premium_quotation', 'custom_terms'] + 
+                            (['custom_branding'] if custom_logo else []) +
+                            (['watermark_free'] if not include_watermark else [])
+            )
+        else:
+            # Standard quotation for non-premium users
+            quotation = quotation_generator.generate_quotation(quote_data, {
+                'id': current_user.id,
+                'email': current_user.email,
+                'name': current_user.username
+            })
+            
+            # Track this interaction
+            interaction = QuoteInteraction(
+                quote_id=quotation['quotation_id'],
+                interaction_type='generate',
+                user_role='normal'
+            )
+        
+        # Save the interaction
+        await track_interaction(interaction, db)
+        
+        # For non-premium users, increment quote count
+        if current_user.role != 'premium':
+            current_user.quotes_used = (current_user.quotes_used or 0) + 1
+            db.add(current_user)
+            await db.commit()
+        
+        return quotation
+        
+    except Exception as e:
+        logger.error(f"Error generating quote: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate quotation. Please try again."
+        )
+
+@router.get("/quotes/{quote_id}/export/pdf")
+async def export_quote_pdf(
+    quote_id: str,
+    include_watermark: bool = True,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Export a quote as a PDF document.
+    
+    Premium users can export without watermarks and with custom branding.
+    """
+    try:
+        # In a real app, you would fetch the quote from the database
+        # For now, we'll just generate a sample quote
+        quote_data = {
+            'quotation_id': quote_id,
+            'date_created': datetime.now().strftime("%Y-%m-%d"),
+            'client': {
+                'name': 'Sample Client',
+                'email': 'client@example.com',
+                'company': 'Client Company'
+            },
+            'project': {
+                'name': 'Sample Project',
+                'description': 'This is a sample project description',
+                'timeline': '4 weeks'
+            },
+            'line_items': [
+                {
+                    'description': 'Sample Service',
+                    'quantity': '10',
+                    'unit': 'hours',
+                    'unit_price': '1,000.00',
+                    'total': '10,000.00'
+                }
+            ],
+            'summary': {
+                'subtotal': '10,000.00',
+                'tax_rate': '18%',
+                'tax_amount': '1,800.00',
+                'discount': '0.00',
+                'total': '11,800.00',
+                'currency': 'INR'
+            },
+            'terms': [
+                '50% advance payment required',
+                'Balance payment on completion',
+                'Prices valid for 30 days'
+            ],
+            'notes': 'Thank you for your business!'
+        }
+        
+        # Check if user can export without watermark
+        can_export_without_watermark = current_user.role == 'premium' and not include_watermark
+        
+        # Generate PDF
+        quotation_generator = PremiumQuotationGenerator()
+        pdf_path = quotation_generator.export_to_pdf(
+            quote_data,
+            include_watermark=not can_export_without_watermark
+        )
+        
+        # Track this interaction
+        interaction = QuoteInteraction(
+            quote_id=quote_id,
+            interaction_type='export_pdf',
+            user_role=current_user.role,
+            features_used=['export_pdf'] + 
+                        (['watermark_free'] if not include_watermark and current_user.role == 'premium' else [])
+        )
+        await track_interaction(interaction, db)
+        
+        # Return the PDF file
+        return FileResponse(
+            pdf_path,
+            media_type='application/pdf',
+            filename=f"quotation_{quote_id}.pdf"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting quote to PDF: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to export quotation to PDF. Please try again."
+        )
+
+@router.get("/features/premium")
+async def get_premium_features():
+    """Get information about premium features and their descriptions."""
+    return {
+        'features': PREMIUM_FEATURES,
+        'descriptions': PREMIUM_FEATURE_DESCRIPTIONS
+    }
 
 from fastapi import UploadFile, File, HTTPException, status
 from pathlib import Path

@@ -24,6 +24,7 @@ load_dotenv(env_path)
 
 from .chat_router import router as chat_router
 from .pdf_router import router as file_router
+from app.api.endpoints.feedback import router as feedback_router
 from models.base import get_db
 from models import User, Base
 from .schemas import UserCreate, UserLogin, UserOut
@@ -77,9 +78,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Lumina Quo",
+    title="VilaiMathi AI",
     version="1.0.0",
-    description="Chat interface with RAG and knowledge graph for business insights",
+    description="AI-powered business quotation assistant with RAG and knowledge graph",
     docs_url="/docs",
     redoc_url=None
 )
@@ -134,6 +135,7 @@ async def auth_me_debug():
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(file_router, prefix="/api/files", tags=["files"])
+app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 
 # Initialize database tables on startup
 @app.on_event("startup")

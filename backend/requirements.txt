@@ -16,6 +16,9 @@ networkx==3.2.1
 # PDF Processing
 pdfplumber==0.10.3
 PyMuPDF==1.23.26
+fpdf2==2.8.4
+reportlab==4.1.0
+PyPDF2==3.0.1
 
 # Text Processing
 fuzzywuzzy==0.18.0

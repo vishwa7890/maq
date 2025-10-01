@@ -165,7 +165,7 @@ export default function AuthPage() {
       <div className="pointer-events-none absolute -bottom-24 -right-24 h-[24rem] w-[24rem] rounded-full bg-purple-200/40 blur-3xl -z-10" />
       <Card className="w-full max-w-md rounded-xl border shadow-xl bg-white/95 backdrop-blur">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-blue-600">Lumina Quo</CardTitle>
+          <CardTitle className="text-2xl font-bold text-blue-600">VilaiMathi AI</CardTitle>
           <CardDescription>Your Business Quotation Expert</CardDescription>
         </CardHeader>
         <CardContent>

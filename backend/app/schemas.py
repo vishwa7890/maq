@@ -66,26 +66,162 @@ class ChatRequest(BaseModel):
     history: List[Dict[str, str]] = []
 
 # --- Quote Schemas ---
+class QuoteItem(BaseModel):
+    """Individual line item for a quotation."""
+    description: str = Field(..., description="Description of the service/item")
+    quantity: float = Field(1.0, description="Quantity of the item")
+    unit: str = Field("hours", description="Unit of measurement (e.g., hours, items)")
+    unit_price: float = Field(..., description="Price per unit in INR")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "description": "Frontend Development",
+                "quantity": 40,
+                "unit": "hours",
+                "unit_price": 2500
+            }
+        }
+
 class QuoteRequest(BaseModel):
+    """Base quote request model for generating quotations."""
     client_name: str = Field(..., description="Name of the client")
-    project_type: str = Field(..., description="Type of the software/project to be quoted")
-    user_input: str = Field(..., description="Raw description from the user about the project requirements")
+    client_email: Optional[EmailStr] = Field(None, description="Client's email address")
+    client_company: Optional[str] = Field(None, description="Client's company name")
+    project_name: str = Field(..., description="Name of the project")
+    project_description: str = Field(..., description="Detailed description of the project")
+    project_type: str = Field(..., description="Type of the project (e.g., 'web', 'mobile', 'custom-software')")
+    timeline: str = Field(..., description="Project timeline (e.g., '4 weeks', '3 months')")
+    items: List[QuoteItem] = Field(..., description="List of line items for the quotation")
+    tax_rate: float = Field(0.18, description="Tax rate as a decimal (e.g., 0.18 for 18%)")
+    discount: float = Field(0.0, description="Discount amount in INR")
+    notes: Optional[str] = Field(None, description="Additional notes or terms")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "client_name": "John Doe",
+                "client_email": "john@example.com",
+                "client_company": "Acme Corp",
+                "project_name": "E-commerce Website",
+                "project_description": "Development of a full-featured e-commerce platform",
+                "project_type": "web",
+                "timeline": "8 weeks",
+                "items": [
+                    {
+                        "description": "Frontend Development",
+                        "quantity": 120,
+                        "unit": "hours",
+                        "unit_price": 2500
+                    },
+                    {
+                        "description": "Backend Development",
+                        "quantity": 160,
+                        "unit": "hours",
+                        "unit_price": 3000
+                    }
+                ],
+                "tax_rate": 0.18,
+                "discount": 5000,
+                "notes": "50% payment in advance, balance on completion"
+            }
+        }
 
 class QuoteResponse(BaseModel):
-    client_name: str = Field(..., description="Name of the client")
-    project_name: str = Field(..., description="Title of the project")
-    date: str = Field(default_factory=lambda: datetime.now().strftime("%Y-%m-%d"), description="Quote date")
-    scope_of_work: Dict[str, List[str]] = Field(..., description="Detailed scope of work with phases and activities")
-    timeline: str = Field(..., description="Estimated project timeline")
-    pricing: Dict[str, float] = Field(..., description="Itemized pricing in INR")
-    total: float = Field(..., description="Total quote amount")
-    notes: str = Field(default="", description="Additional terms and conditions")
-    payment_terms: str = Field(default="50% advance, 50% upon completion", description="Payment schedule")
+    """Enhanced quote response with detailed breakdown."""
+    quotation_id: str = Field(..., description="Unique identifier for the quotation")
+    date_created: str = Field(..., description="Date when the quote was created")
+    client: Dict[str, str] = Field(..., description="Client information")
+    project: Dict[str, str] = Field(..., description="Project details")
+    line_items: List[Dict[str, str]] = Field(..., description="Detailed line items")
+    summary: Dict[str, str] = Field(..., description="Financial summary")
+    terms: List[str] = Field(..., description="Terms and conditions")
+    notes: str = Field("", description="Additional notes")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "quotation_id": "QUO-123456",
+                "date_created": "2023-10-15",
+                "client": {
+                    "name": "John Doe",
+                    "email": "john@example.com",
+                    "company": "Acme Corp"
+                },
+                "project": {
+                    "name": "E-commerce Website",
+                    "description": "Development of a full-featured e-commerce platform",
+                    "timeline": "8 weeks"
+                },
+                "line_items": [
+                    {
+                        "description": "Frontend Development",
+                        "quantity": "120",
+                        "unit": "hours",
+                        "unit_price": "2,500.00",
+                        "total": "300,000.00"
+                    },
+                    {
+                        "description": "Backend Development",
+                        "quantity": "160",
+                        "unit": "hours",
+                        "unit_price": "3,000.00",
+                        "total": "480,000.00"
+                    }
+                ],
+                "summary": {
+                    "subtotal": "780,000.00",
+                    "tax_rate": "18%",
+                    "tax_amount": "140,400.00",
+                    "discount": "5,000.00",
+                    "total": "915,400.00",
+                    "currency": "INR"
+                },
+                "terms": [
+                    "50% advance payment required to begin work",
+                    "Balance payment due upon project completion",
+                    "Prices valid for 30 days"
+                ],
+                "notes": "Additional customization available upon request"
+            }
+        }
+
+class PremiumQuotationRequest(QuoteRequest):
+    """Enhanced quote request for premium users with additional features."""
+    include_watermark: bool = Field(False, description="Whether to include watermark in exports")
+    custom_logo_url: Optional[str] = Field(None, description="URL to custom logo for branding")
+    custom_terms: Optional[List[str]] = Field(None, description="Custom terms and conditions")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                **QuoteRequest.Config.json_schema_extra["example"],
+                "include_watermark": False,
+                "custom_logo_url": "https://example.com/logo.png",
+                "custom_terms": [
+                    "Additional support included for 30 days post-delivery",
+                    "Source code ownership transferred upon final payment"
+                ]
+            }
+        }
 
 class QuoteInteraction(BaseModel):
+    """Tracks user interactions with quotes."""
     quote_id: str = Field(..., description="Unique identifier for the quote")
-    interaction_type: str = Field(..., description="Type of interaction (e.g., 'download', 'edit', 'ignore', 'share')")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata about the interaction")
+    interaction_type: str = Field(..., 
+        description="Type of interaction (e.g., 'download', 'edit', 'ignore', 'share')")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, 
+        description="Additional metadata about the interaction"
+    )
+    user_role: str = Field(
+        "normal", 
+        description="User's role at the time of interaction (normal/premium)"
+    )
+    features_used: Optional[List[str]] = Field(
+        None,
+        description="Premium features used during this interaction"
+    )
 
 # --- Document and Comparison Schemas ---
 class SearchDocument(BaseModel):

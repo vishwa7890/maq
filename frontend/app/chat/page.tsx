@@ -45,18 +45,18 @@ interface ChatSession {
 }
 
 export default function ChatPage() {
+  const router = useRouter()
+  const { toast } = useToast()
   const [user, setUser] = useState<User | null>(null)
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [currentSession, setCurrentSession] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const router = useRouter()
-  const { toast } = useToast()
 
   // --- Helpers & Handlers (top-level scope) ---
 
@@ -133,80 +133,94 @@ export default function ChatPage() {
   }, [mdEscapeHtml])
 
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const userData = await api.me()
+        setUser(userData)
+      } catch (error) {
+        console.log('No active session, using anonymous mode')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  useEffect(() => {
     const init = async () => {
       try {
-        const me = await api.me()
-        setUser({
-          ...me,
-          quotes_used: Number(me?.quotes_used || me?.quotesUsed || 0), // Ensure quotes_used is a number
-          role: (me?.role || 'normal') as 'normal' | 'premium' // Ensure role has a default value
-        } as User)
+        // Load sessions from backend
+        try {
+          const backendSessions = await api.listChatSessions()
+          if (Array.isArray(backendSessions) && backendSessions.length > 0) {
+            const mapped: ChatSession[] = backendSessions.map((s: any) => ({
+              id: s.session_uuid || s.id,
+              name: s.title || 'Chat',
+              messages: [],
+              createdAt: new Date(s.created_at || Date.now()),
+            }))
+            setSessions(mapped)
+            // Pick first session and load messages
+            const first = mapped[0]
+            setCurrentSession(first.id)
+            try {
+              const msgs = await api.getSessionMessages(first.id)
+              const mappedMsgs: Message[] = (Array.isArray(msgs) ? msgs : []).map((m: any, idx: number) => ({
+                id: String(m.id ?? idx),
+                type: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: m.content ?? '',
+                timestamp: new Date(m.timestamp || m.created_at || Date.now()),
+              }))
+              setMessages(mappedMsgs)
+            } catch {
+              setMessages([])
+            }
+          } else {
+            // Create a new backend session
+            const created = await api.createChatSession({ title: 'New Chat' })
+            const newSession: ChatSession = {
+              id: created.id, // backend returns session_uuid as id in this route
+              name: created.title || 'New Chat',
+              messages: [{
+                id: 'welcome',
+                type: 'assistant',
+                content: "Hi, I'm VilaiMathi AI - your business quotation expert!",
+                timestamp: new Date()
+              }],
+              createdAt: new Date(created.created_at || Date.now()),
+            }
+            setSessions([newSession])
+            setCurrentSession(newSession.id)
+            setMessages(newSession.messages)
+          }
+        } catch (e) {
+          // Fallback to a local welcome session if backend fails
+          const welcomeSession: ChatSession = {
+            id: 'welcome',
+            name: 'Welcome Chat',
+            messages: [{
+              id: '1',
+              type: 'assistant',
+              content: "Hi, I'm QuestiMate - your business quotation expert!",
+              timestamp: new Date()
+            }],
+            createdAt: new Date()
+          }
+          setSessions([welcomeSession])
+          setCurrentSession('welcome')
+          setMessages(welcomeSession.messages)
+        }
       } catch {
         router.push('/auth')
         return
       }
       
-      // Load sessions from backend
-      try {
-        const backendSessions = await api.listChatSessions()
-        if (Array.isArray(backendSessions) && backendSessions.length > 0) {
-          const mapped: ChatSession[] = backendSessions.map((s: any) => ({
-            id: s.session_uuid || s.id,
-            name: s.title || 'Chat',
-            messages: [],
-            createdAt: new Date(s.created_at || Date.now()),
-          }))
-          setSessions(mapped)
-          // Pick first session and load messages
-          const first = mapped[0]
-          setCurrentSession(first.id)
-          try {
-            const msgs = await api.getSessionMessages(first.id)
-            const mappedMsgs: Message[] = (Array.isArray(msgs) ? msgs : []).map((m: any, idx: number) => ({
-              id: String(m.id ?? idx),
-              type: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-              content: m.content ?? '',
-              timestamp: new Date(m.timestamp || m.created_at || Date.now()),
-            }))
-            setMessages(mappedMsgs)
-          } catch {
-            setMessages([])
-          }
-        } else {
-          // Create a new backend session
-          const created = await api.createChatSession({ title: 'New Chat' })
-          const newSession: ChatSession = {
-            id: created.id, // backend returns session_uuid as id in this route
-            name: created.title || 'New Chat',
-            messages: [{
-              id: 'welcome',
-              type: 'assistant',
-              content: "Hi, I'm Lumina Quo - your business quotation expert!",
-              timestamp: new Date()
-            }],
-            createdAt: new Date(created.created_at || Date.now()),
-          }
-          setSessions([newSession])
-          setCurrentSession(newSession.id)
-          setMessages(newSession.messages)
-        }
-      } catch (e) {
-        // Fallback to a local welcome session if backend fails
-        const welcomeSession: ChatSession = {
-          id: 'welcome',
-          name: 'Welcome Chat',
-          messages: [{
-            id: '1',
-            type: 'assistant',
-            content: "Hi, I'm QuestiMate - your business quotation expert!",
-            timestamp: new Date()
-          }],
-          createdAt: new Date()
-        }
-        setSessions([welcomeSession])
-        setCurrentSession('welcome')
-        setMessages(welcomeSession.messages)
-      }
+      // Ensure quotes_used is a number
+      setUser((prev: any) => ({
+        ...prev,
+        quotes_used: Number(prev?.quotes_used || prev?.quotesUsed || 0)
+      }))
     }
     init()
   }, [router])
@@ -276,8 +290,33 @@ export default function ChatPage() {
     return data
   }
 
+  const fetchSessions = async () => {
+    try {
+      const backendSessions = await api.listChatSessions()
+      if (Array.isArray(backendSessions) && backendSessions.length > 0) {
+        const mapped: ChatSession[] = backendSessions.map((s: any) => ({
+          id: s.session_uuid || s.id,
+          name: s.title || 'Chat',
+          messages: [],
+          createdAt: new Date(s.created_at || Date.now()),
+        }))
+        setSessions(mapped)
+        return mapped
+      }
+    } catch (error) {
+      console.error('Error fetching sessions:', error)
+    }
+    return []
+  }
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !currentSession) return
+
+    // If user is not logged in, redirect to auth page
+    if (!user) {
+      router.push('/auth?message=Please sign in to use the chat feature.')
+      return
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -291,34 +330,26 @@ export default function ChatPage() {
     setIsLoading(true)
 
     try {
-      const data = await sendChatToBackend(userMessage.content, currentSession)
-      const replyText: string = data?.content || 'No response.'
-      const backendSessionId: string = data?.session_uuid || currentSession
-      
-      // Update user quota if response contains user info
-      if (data?.user_info) {
-        setUser((prev: any) => ({
-          ...prev,
-          quotes_used: Number(data.user_info.quotes_used || prev.quotes_used || 0)
-        }))
-      }
-      
-      // If backend returned a different session id (newly created), switch to it
-      if (backendSessionId !== currentSession) {
-        setCurrentSession(backendSessionId)
-      }
+      const response = await api.sendChat({
+        content: inputValue,
+        chat_id: currentSession || undefined
+      })
+
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: Date.now().toString(),
         type: 'assistant',
-        content: replyText,
-        timestamp: new Date()
+        content: response.content,
+        timestamp: new Date(),
+        quote: response.quote
       }
+
       setMessages(prev => [...prev, assistantMessage])
-      setSessions(prev => prev.map(session => 
-        session.id === (backendSessionId || currentSession)
-          ? { ...session, messages: [...session.messages, userMessage, assistantMessage] }
-          : session
-      ))
+
+      // Update sessions if this is a new session
+      if (response.session_id && !sessions.some(s => s.id === response.session_id)) {
+        await fetchSessions()
+        setCurrentSession(response.session_id)
+      }
     } catch (e: any) {
       // Check if error is quota exceeded
       if (e?.response?.status === 429 || (e?.error === 'Quote limit reached')) {
@@ -327,7 +358,13 @@ export default function ChatPage() {
           title: 'Quote limit reached',
           description: 'You\'ve used all 5 free quotes. Upgrade to Premium for unlimited quotes.'
         })
-        return
+      } else {
+        console.error('Error sending message:', e)
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to send message. Please try again.'
+        })
       }
       
       const assistantMessage: Message = {
@@ -393,7 +430,7 @@ export default function ChatPage() {
             <h1 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Image
                 src="/lumina_qou_png.png"
-                alt="Lumina Quo"
+                alt="VilaiMathi AI"
                 width={24}
                 height={24}
                 className="rounded"
@@ -499,35 +536,22 @@ export default function ChatPage() {
         {/* Input */}
         <div className="bg-white border-t p-3 lg:p-6 safe-area-inset-bottom">
           <div className="max-w-4xl mx-auto">
-            <div className="flex flex-col lg:flex-row gap-3 lg:gap-4">
-              <div className="flex-1 relative">
+            <div className="flex justify-center">
+              <div className="w-full max-w-3xl relative">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="Describe your project requirements..."
-                  className="pr-12 h-12 lg:h-10 text-base lg:text-sm"
+                  className="pr-12 h-12 lg:h-12 text-base lg:text-sm"
                   onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
                 />
                 <Button
                   size="sm"
-                  className="absolute right-1 top-1 h-10 lg:h-8"
+                  className="absolute right-1 top-1 h-10 lg:h-10"
                   onClick={handleSendMessage}
                   disabled={!inputValue.trim() || isLoading}
                 >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-              
-              <div className="relative lg:flex-shrink-0">
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                />
-                <Button variant="outline" className="w-full lg:w-auto h-12 lg:h-10">
-                  <Upload className="h-4 w-4 mr-2" />
-                  <span className="lg:inline">Upload PDF</span>
+                  <Send className="h-5 w-5" />
                 </Button>
               </div>
             </div>

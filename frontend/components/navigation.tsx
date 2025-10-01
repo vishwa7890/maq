@@ -59,22 +59,34 @@ export function Navigation() {
           <Link href="/" className="flex items-center gap-2 group">
             <Image
               src="/lumina_qou_png.png"
-              alt="Lumina Quo"
+              alt="VilaiMathi AI"
               width={52}
               height={52}
               priority
             />
-            <span className="text-xl font-bold text-gray-900">Lumina Quo</span>
+            <span className="text-xl font-bold text-gray-900">VilaiMathi AI</span>
           </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
-            <Link 
-              href="/chat" 
-              className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
-            >
-              Chat
-            </Link>
+            {user ? (
+              <Link 
+                href="/chat" 
+                className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
+              >
+                Chat
+              </Link>
+            ) : (
+              <button 
+                onClick={() => {
+                  // Redirect to auth page with a message
+                  window.location.href = '/auth?message=Please sign in to access the chat feature.';
+                }}
+                className="text-gray-400 cursor-not-allowed font-medium"
+              >
+                Chat
+              </button>
+            )}
             <Link 
               href="#features" 
               className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
@@ -146,13 +158,25 @@ export function Navigation() {
         {isMenuOpen && (
           <div className="md:hidden border-t bg-white/95 backdrop-blur-sm">
             <div className="px-2 pt-2 pb-3 space-y-1">
-              <Link 
-                href="/chat" 
-                className="block px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md font-medium"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Chat
-              </Link>
+              {user ? (
+                <Link 
+                  href="/chat" 
+                  className="block px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md font-medium"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Chat
+                </Link>
+              ) : (
+                <button 
+                  className="block w-full text-left px-3 py-2 text-gray-400 cursor-not-allowed rounded-md font-medium"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    window.location.href = '/auth?message=Please sign in to access the chat feature.';
+                  }}
+                >
+                  Chat
+                </button>
+              )}
               <Link 
                 href="#features" 
                 className="block px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md font-medium"

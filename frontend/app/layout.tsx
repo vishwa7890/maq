@@ -6,7 +6,7 @@ import { Navigation } from '@/components/navigation'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Lumina Quo - Business Quotation Assistant',
+  title: 'VilaiMathi AI - Business Quotation Assistant',
   description: 'AI-powered business quotation generator with role-based features',
   generator: 'v0.dev'
 }
@@ -18,9 +18,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${inter.className} flex flex-col min-h-screen`}>
         <Navigation />
-        {children}
+        <main className="flex-grow">
+          {children}
+        </main>
       </body>
     </html>
   )
