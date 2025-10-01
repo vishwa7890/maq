@@ -70,7 +70,7 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
     
     // Handle specific error cases
     if (res.status === 401) {
-      message = 'Your session has expired. Please log in again.'
+      message = 'Your session has expired. Please log in again to continue.'
       // Do not auto-logout for auth endpoints like /auth/me where 401 is expected
       shouldLogout = !isAuthMe && !isAuthEndpoint
     } else if (res.status === 403) {
