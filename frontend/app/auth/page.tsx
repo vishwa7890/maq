@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import Script from 'next/script'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +14,12 @@ import { Mail, Phone, User, Lock, CreditCard } from 'lucide-react'
 import { api } from '@/lib/api'
 
 type Role = 'normal' | 'premium'
+
+declare global {
+  interface Window {
+    google?: any
+  }
+}
 
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState('login')
@@ -33,6 +40,59 @@ export default function AuthPage() {
     role: 'normal',
   })
   const router = useRouter()
+
+  const handleGoogleCredential = useCallback(async (credentialResponse: { credential?: string }) => {
+    const credential = credentialResponse?.credential
+
+    if (!credential) {
+      setError('Google authentication failed. Missing credential.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+      await api.googleLogin(credential)
+      const user = await api.me()
+      if (user) {
+        router.push('/chat')
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Google login failed. Please try again later.')
+    } finally {
+      setLoading(false)
+    }
+  }, [router])
+
+  const initializeGoogle = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+    if (!clientId) {
+      console.warn('NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.')
+      return
+    }
+
+    const google = window.google
+    if (!google?.accounts?.id) {
+      return
+    }
+
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: handleGoogleCredential,
+    })
+
+    const target = document.getElementById('googleSignInButton')
+    if (target) {
+      target.innerHTML = ''
+      google.accounts.id.renderButton(target, {
+        theme: 'outline',
+        size: 'large',
+        type: 'standard',
+      })
+    }
+  }, [handleGoogleCredential])
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -150,6 +210,10 @@ export default function AuthPage() {
   }
 
   useEffect(() => {
+    initializeGoogle()
+  }, [initializeGoogle])
+
+  useEffect(() => {
     // Check for upgrade parameter
     const urlParams = new URLSearchParams(window.location.search)
     if (urlParams.get('upgrade') === 'true') {
@@ -160,6 +224,13 @@ export default function AuthPage() {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 flex items-center justify-center p-4 overflow-hidden">
+      <Script
+        src="https://accounts.google.com/gsi/client"
+        strategy="afterInteractive"
+        async
+        defer
+        onLoad={initializeGoogle}
+      />
       {/* Decorative background */}
       <div className="pointer-events-none absolute -top-24 -left-24 h-[24rem] w-[24rem] rounded-full bg-blue-200/40 blur-3xl -z-10" />
       <div className="pointer-events-none absolute -bottom-24 -right-24 h-[24rem] w-[24rem] rounded-full bg-purple-200/40 blur-3xl -z-10" />
@@ -195,7 +266,7 @@ export default function AuthPage() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="login-password">Password</Label>
                   <div className="relative">
@@ -211,13 +282,21 @@ export default function AuthPage() {
                     />
                   </div>
                 </div>
-                
+
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? 'Logging in...' : 'Login'}
                 </Button>
+                <div className="flex items-center gap-2 text-xs uppercase text-gray-400">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span>Or</span>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+                <div className="flex justify-center">
+                  <div id="googleSignInButton" className="flex justify-center" />
+                </div>
               </form>
             </TabsContent>
-            
+
             <TabsContent value="register">
               <form onSubmit={handleRegister} className="space-y-4">
                 {error && activeTab === 'register' && (
@@ -238,7 +317,7 @@ export default function AuthPage() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="register-email">Email</Label>
                   <div className="relative">
@@ -257,7 +336,7 @@ export default function AuthPage() {
                     <p className="text-sm text-red-500">Please use Gmail or Yahoo email</p>
                   )}
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="register-password">Password</Label>
                   <div className="relative">
@@ -273,7 +352,7 @@ export default function AuthPage() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="register-phone">Phone</Label>
                   <div className="relative">
@@ -289,7 +368,7 @@ export default function AuthPage() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <Label>Choose Role</Label>
                   <RadioGroup
@@ -311,9 +390,9 @@ export default function AuthPage() {
                     </div>
                   </RadioGroup>
                 </div>
-                
-                <Button 
-                  type="submit" 
+
+                <Button
+                  type="submit"
                   className="w-full"
                   disabled={loading || (!!formData.email && !isValidEmail(formData.email))}
                 >

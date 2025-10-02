@@ -133,6 +133,20 @@ export const api = {
   },
   register: (payload: { username: string; email: string; password: string; phone_number?: string; phone?: string; role?: 'normal' | 'premium' }) =>
     apiFetch('/auth/register', { method: 'POST', json: payload }),
+  googleLogin: (idToken: string) =>
+    apiFetch('/auth/google', {
+      method: 'POST',
+      json: { id_token: idToken },
+      noCache: true,
+    }).then(result => {
+      try {
+        cache.delete('/auth/me')
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('user-updated'))
+        }
+      } catch {}
+      return result
+    }),
   // Always bypass cache for user info to keep usage counts fresh
   me: () => apiFetch('/auth/me', { method: 'GET', noCache: true }),
   generateQuote: async (payload: any) => {

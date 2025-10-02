@@ -4,6 +4,8 @@ import sys
 import signal
 import json
 import jwt
+import secrets
+import httpx
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -44,6 +46,13 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 # Set to 100 years (effectively never expires)
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365 * 100
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+ALLOWED_EMAIL_DOMAINS = [
+    domain.strip().lower()
+    for domain in os.getenv("ALLOWED_EMAIL_DOMAINS", "").split(",")
+    if domain.strip()
+]
+GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 def configure_logging():
     logging.config.dictConfig({
@@ -103,7 +112,6 @@ if not allow_origins:
         "https://luminaquo.mindapt.in"
     ])
 
-# Remove any empty strings and ensure unique origins
 allow_origins = list(set(filter(None, allow_origins)))
 
 # Log CORS configuration for debugging
@@ -197,22 +205,7 @@ async def register(
         await db.commit()
         await db.refresh(db_user)
         
-        # Create access token for the new user (100 years expiration)
-        access_token = create_access_token({"sub": db_user.username, "user_id": db_user.id})
-        
-        # Set the access token as an HTTP-only cookie
-        # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
-        # In production over HTTPS, set secure=True.
-        # Set max_age to match token expiration (100 years in seconds)
-        response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            samesite="none",  # Use None for cross-site cookies in production
-            secure=True,  # True in production with HTTPS
-            path="/",
-            max_age=60 * 60 * 24 * 365 * 100,  # 100 years in seconds
-        )
+        _set_auth_cookie(response, db_user)
         
         # Return success response with redirect URL
         return {
@@ -263,26 +256,26 @@ async def login(
         logger.warning(f"Invalid password for user: {form_data.username}")
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     
-    # Create access token (100 years expiration)
-    access_token = create_access_token({"sub": user.username, "user_id": user.id})
-    
-    # Set the access token as an HTTP-only cookie
-    # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
-    # In production over HTTPS, set secure=True.
-    # Set max_age to match token expiration (100 years in seconds)
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        samesite="none",  # Use None for cross-site cookies in production
-        secure=True,  # True in production with HTTPS
-        path="/",
-        max_age=60 * 60 * 24 * 365 * 100,  # 100 years in seconds
-    )
+    _set_auth_cookie(response, user)
     
     # Return success response with redirect URL
     frontend_url = os.getenv("FRONTEND_URL")
     return {"message": "Login successful", "redirect": f"{frontend_url}/chat"}
+
+
+def _set_auth_cookie(response: Response, user: User) -> None:
+    """Helper to issue auth cookie after successful login/register."""
+    access_token = create_access_token({"sub": user.username, "user_id": user.id})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        samesite="none",
+        secure=True,
+        path="/",
+        max_age=60 * 60 * 24 * 365 * 100,
+    )
+
 
 @app.post("/auth/logout")
 async def logout(response: Response):
@@ -296,6 +289,110 @@ async def logout(response: Response):
     )
     frontend_url = os.getenv("FRONTEND_URL")
     return {"message": "Successfully logged out", "redirect": f"{frontend_url}/auth"}
+
+
+async def _verify_google_token(id_token: str) -> dict:
+    if not id_token:
+        raise HTTPException(status_code=400, detail="Missing Google ID token")
+
+    params = {"id_token": id_token}
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(GOOGLE_TOKEN_INFO_URL, params=params)
+
+    if resp.status_code != 200:
+        logger.warning("Google token verification failed: %s", resp.text)
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    data = resp.json()
+    aud = data.get("aud")
+    if not aud or aud != GOOGLE_CLIENT_ID:
+        logger.warning("Google token audience mismatch. Expected %s, got %s", GOOGLE_CLIENT_ID, aud)
+        raise HTTPException(status_code=403, detail="Google token has invalid audience")
+
+    email = data.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Google token missing email")
+
+    domain = email.split("@")[-1].lower()
+    if ALLOWED_EMAIL_DOMAINS and domain not in ALLOWED_EMAIL_DOMAINS:
+        logger.warning("Email domain %s not allowed", domain)
+        raise HTTPException(status_code=403, detail="Email domain not allowed")
+
+    return {
+        "email": email,
+        "name": data.get("name"),
+        "picture": data.get("picture"),
+        "sub": data.get("sub"),
+        "email_verified": data.get("email_verified") == "true",
+    }
+
+
+async def _get_or_create_user_by_email(db: AsyncSession, email: str, name: Optional[str] = None) -> User:
+    user = await get_user_by_email(db, email)
+    if user:
+        return user
+
+    username = email.split("@")[0]
+    base_username = username
+    attempt = 1
+    while await get_user_by_username(db, username):
+        username = f"{base_username}{attempt}"
+        attempt += 1
+
+    random_password = secrets.token_urlsafe(16)
+    db_user = User(
+        username=username,
+        email=email,
+        hashed_password=hash_password(random_password),
+        role="normal",
+    )
+    if hasattr(User, "phone_number"):
+        db_user.phone_number = None
+
+    db.add(db_user)
+    try:
+        await db.commit()
+        await db.refresh(db_user)
+        return db_user
+    except IntegrityError:
+        await db.rollback()
+        # Race condition - retry fetch
+        user = await get_user_by_email(db, email)
+        if user:
+            return user
+        raise HTTPException(status_code=500, detail="Failed to create user from Google login")
+
+
+@app.post("/auth/google", response_model=dict)
+async def google_login(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google login not configured")
+
+    body = await request.json()
+    id_token = body.get("id_token")
+
+    google_data = await _verify_google_token(id_token)
+    email = google_data["email"].lower()
+
+    user = await _get_or_create_user_by_email(db, email, google_data.get("name"))
+
+    _set_auth_cookie(response, user)
+
+    frontend_url = os.getenv("FRONTEND_URL", "")
+    return {
+        "message": "Google login successful",
+        "redirect": f"{frontend_url}/chat" if frontend_url else "/chat",
+        "user": {
+            "id": getattr(user, "id", None),
+            "username": getattr(user, "username", None),
+            "email": getattr(user, "email", None),
+            "role": getattr(user, "role", "normal"),
+        },
+        "google": {
+            "name": google_data.get("name"),
+            "picture": google_data.get("picture"),
+        },
+    }
 
 
 @app.get("/auth/me", response_model=dict)
