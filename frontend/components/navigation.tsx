@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Menu, X, Crown, User, LogOut } from 'lucide-react'
 import { api } from '@/lib/api'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import Image from 'next/image'
 
 export function Navigation() {
@@ -14,6 +14,8 @@ export function Navigation() {
   const [user, setUser] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
+  const pathname = usePathname()
+  const isHomePage = pathname === '/'
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -87,18 +89,22 @@ export function Navigation() {
                 Chat
               </button>
             )}
-            <Link 
-              href="#features" 
-              className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
-            >
-              Features
-            </Link>
-            <Link 
-              href="#pricing" 
-              className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
-            >
-              Pricing
-            </Link>
+            {isHomePage && (
+              <>
+                <Link 
+                  href="#features" 
+                  className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
+                >
+                  Features
+                </Link>
+                <Link 
+                  href="#pricing" 
+                  className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
+                >
+                  Pricing
+                </Link>
+              </>
+            )}
             
             {/* User Section */}
             {isLoading ? (
@@ -177,20 +183,24 @@ export function Navigation() {
                   Chat
                 </button>
               )}
-              <Link 
-                href="#features" 
-                className="block px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md font-medium"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Features
-              </Link>
-              <Link 
-                href="#pricing" 
-                className="block px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md font-medium"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Pricing
-              </Link>
+              {isHomePage && (
+                <>
+                  <Link 
+                    href="#features" 
+                    className="block px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md font-medium"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Features
+                  </Link>
+                  <Link 
+                    href="#pricing" 
+                    className="block px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md font-medium"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Pricing
+                  </Link>
+                </>
+              )}
               
               {user ? (
                 <div className="px-3 py-2 space-y-2">

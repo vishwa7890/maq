@@ -327,7 +327,7 @@ async def _verify_google_token(id_token: str) -> dict:
     }
 
 
-async def _get_or_create_user_by_email(db: AsyncSession, email: str, name: Optional[str] = None) -> User:
+async def _get_or_create_user_by_email(db: AsyncSession, email: str, name: Optional[str] = None, role: str = "normal") -> User:
     user = await get_user_by_email(db, email)
     if user:
         return user
@@ -339,12 +339,16 @@ async def _get_or_create_user_by_email(db: AsyncSession, email: str, name: Optio
         username = f"{base_username}{attempt}"
         attempt += 1
 
+    # Validate role
+    if role not in {"normal", "premium"}:
+        role = "normal"
+
     random_password = secrets.token_urlsafe(16)
     db_user = User(
         username=username,
         email=email,
         hashed_password=hash_password(random_password),
-        role="normal",
+        role=role,
     )
     if hasattr(User, "phone_number"):
         db_user.phone_number = None
@@ -370,11 +374,12 @@ async def google_login(request: Request, response: Response, db: AsyncSession = 
 
     body = await request.json()
     id_token = body.get("id_token")
+    role_preference = body.get("role", "normal")  # Accept role from frontend
 
     google_data = await _verify_google_token(id_token)
     email = google_data["email"].lower()
 
-    user = await _get_or_create_user_by_email(db, email, google_data.get("name"))
+    user = await _get_or_create_user_by_email(db, email, google_data.get("name"), role_preference)
 
     _set_auth_cookie(response, user)
 

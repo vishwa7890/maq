@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Script from 'next/script'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +40,7 @@ export default function AuthPage() {
     role: 'normal',
   })
   const router = useRouter()
+  const googleInitializedRef = useRef(false)
 
   const handleGoogleCredential = useCallback(async (credentialResponse: { credential?: string }) => {
     const credential = credentialResponse?.credential
@@ -52,19 +53,29 @@ export default function AuthPage() {
     try {
       setLoading(true)
       setError(null)
-      await api.googleLogin(credential)
+      
+      // For register tab, check if premium role is selected
+      const isPremiumSignup = activeTab === 'register' && formData.role === 'premium'
+      const selectedRole = activeTab === 'register' ? formData.role : 'normal'
+      
+      await api.googleLogin(credential, selectedRole)
       const user = await api.me()
       if (user) {
-        router.push('/chat')
+        // If premium was selected during Google signup, redirect to payment
+        if (isPremiumSignup) {
+          setShowPayment(true)
+        } else {
+          router.push('/chat')
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Google login failed. Please try again later.')
     } finally {
       setLoading(false)
     }
-  }, [router])
+  }, [router, activeTab, formData.role, setShowPayment])
 
-  const initializeGoogle = useCallback(() => {
+  const renderGoogleButton = useCallback((tab?: string) => {
     if (typeof window === 'undefined') return
 
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
@@ -78,21 +89,38 @@ export default function AuthPage() {
       return
     }
 
-    google.accounts.id.initialize({
-      client_id: clientId,
-      callback: handleGoogleCredential,
-    })
+    // Initialize once globally if not done
+    if (!googleInitializedRef.current) {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleCredential,
+      })
+      googleInitializedRef.current = true
+    }
 
-    const target = document.getElementById('googleSignInButton')
-    if (target) {
+    const selector = tab ? `[data-google-button="${tab}"]` : '[data-google-button]'
+    const targets = document.querySelectorAll<HTMLElement>(selector)
+    targets.forEach(target => {
+      if (target.hasChildNodes()) return // Skip if already rendered
       target.innerHTML = ''
       google.accounts.id.renderButton(target, {
         theme: 'outline',
         size: 'large',
         type: 'standard',
       })
-    }
+    })
   }, [handleGoogleCredential])
+
+  const initializeGoogle = useCallback((tab?: string) => {
+    // Just render buttons, initialization is handled in renderGoogleButton
+    setTimeout(() => {
+      renderGoogleButton(tab)
+      if (!tab) {
+        renderGoogleButton('login')
+        renderGoogleButton('register')
+      }
+    }, 100) // Small delay to ensure DOM is ready
+  }, [renderGoogleButton])
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -210,8 +238,8 @@ export default function AuthPage() {
   }
 
   useEffect(() => {
-    initializeGoogle()
-  }, [initializeGoogle])
+    initializeGoogle(activeTab)
+  }, [initializeGoogle, activeTab])
 
   useEffect(() => {
     // Check for upgrade parameter
@@ -226,10 +254,8 @@ export default function AuthPage() {
     <div className="relative min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 flex items-center justify-center p-4 overflow-hidden">
       <Script
         src="https://accounts.google.com/gsi/client"
-        strategy="afterInteractive"
-        async
-        defer
-        onLoad={initializeGoogle}
+        strategy="beforeInteractive"
+        onLoad={() => initializeGoogle(activeTab)}
       />
       {/* Decorative background */}
       <div className="pointer-events-none absolute -top-24 -left-24 h-[24rem] w-[24rem] rounded-full bg-blue-200/40 blur-3xl -z-10" />
@@ -292,7 +318,7 @@ export default function AuthPage() {
                   <div className="h-px flex-1 bg-gray-200" />
                 </div>
                 <div className="flex justify-center">
-                  <div id="googleSignInButton" className="flex justify-center" />
+                  <div data-google-button="login" className="flex justify-center" />
                 </div>
               </form>
             </TabsContent>
@@ -398,6 +424,15 @@ export default function AuthPage() {
                 >
                   {loading ? 'Processing...' : formData.role === 'premium' ? 'Continue to Payment' : 'Register'}
                 </Button>
+                <div className="flex items-center gap-2 text-xs uppercase text-gray-400">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span>Or</span>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <div data-google-button="register" className="flex justify-center" />
+                  <p className="text-sm font-medium text-gray-500">Use your Google account to sign up instantly.</p>
+                </div>
               </form>
             </TabsContent>
           </Tabs>

@@ -133,10 +133,10 @@ export const api = {
   },
   register: (payload: { username: string; email: string; password: string; phone_number?: string; phone?: string; role?: 'normal' | 'premium' }) =>
     apiFetch('/auth/register', { method: 'POST', json: payload }),
-  googleLogin: (idToken: string) =>
+  googleLogin: (idToken: string, role?: string) =>
     apiFetch('/auth/google', {
       method: 'POST',
-      json: { id_token: idToken },
+      json: { id_token: idToken, role: role || 'normal' },
       noCache: true,
     }).then(result => {
       try {
