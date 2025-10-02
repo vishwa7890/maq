@@ -4,12 +4,12 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "build:static": "next build",
     "dev": "node server.js",
     "dev:next": "next dev",
     "lint": "next lint",
     "start": "NODE_ENV=production node server.js",
-    "start:next": "next start"
+    "start:static": "npx serve@latest out",
+    "serve": "npx serve@latest out"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -60,8 +60,6 @@
     "react-hook-form": "^7.54.1",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
@@ -69,7 +67,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@netlify/plugin-nextjs": "^5.12.1",
+    "@netlify/plugin-nextjs": "^5.13.3",
     "@tailwindcss/nesting": "^0.0.0-insiders.565cd3e",
     "@types/node": "^22",
     "@types/react": "^19",
@@ -78,6 +76,7 @@
     "postcss": "^8.5.6",
     "postcss-import": "^16.1.1",
     "postcss-nesting": "^13.0.2",
+    "serve": "^14.2.5",
     "tailwindcss": "^3.4.14",
     "typescript": "^5"
   }

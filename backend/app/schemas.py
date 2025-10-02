@@ -65,6 +65,19 @@ class ChatRequest(BaseModel):
     chat_id: Optional[str] = None  # Session UUID to link messages to sessions
     history: List[Dict[str, str]] = []
 
+
+class AnalysisPromptRequest(BaseModel):
+    """Incoming payload for analysis prompt generation."""
+    topic: str = Field(..., description="High-level topic or question the user wants to analyze")
+    context: Optional[str] = Field(None, description="Additional business context, data, or goals")
+    tone: Optional[str] = Field(None, description="Preferred tone (e.g., professional, concise, data-driven)")
+
+
+class AnalysisPromptResponse(BaseModel):
+    """Response payload containing generated analysis prompt."""
+    prompt: str
+    suggestions: Optional[List[str]] = None
+
 # --- Quote Schemas ---
 class QuoteItem(BaseModel):
     """Individual line item for a quotation."""

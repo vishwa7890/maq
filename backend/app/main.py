@@ -197,13 +197,13 @@ async def register(
         await db.commit()
         await db.refresh(db_user)
         
-        # Create access token for the new user (without expiration)
-        access_token = create_access_token({"sub": db_user.username, "user_id": db_user.id}, expires_delta=None)
+        # Create access token for the new user (100 years expiration)
+        access_token = create_access_token({"sub": db_user.username, "user_id": db_user.id})
         
         # Set the access token as an HTTP-only cookie
         # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
         # In production over HTTPS, set secure=True.
-        # No max_age since the token doesn't expire
+        # Set max_age to match token expiration (100 years in seconds)
         response.set_cookie(
             key="access_token",
             value=access_token,
@@ -211,6 +211,7 @@ async def register(
             samesite="none",  # Use None for cross-site cookies in production
             secure=True,  # True in production with HTTPS
             path="/",
+            max_age=60 * 60 * 24 * 365 * 100,  # 100 years in seconds
         )
         
         # Return success response with redirect URL
@@ -262,13 +263,13 @@ async def login(
         logger.warning(f"Invalid password for user: {form_data.username}")
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     
-    # Create access token (without expiration)
-    access_token = create_access_token({"sub": user.username, "user_id": user.id}, expires_delta=None)
+    # Create access token (100 years expiration)
+    access_token = create_access_token({"sub": user.username, "user_id": user.id})
     
     # Set the access token as an HTTP-only cookie
     # For cross-site requests (frontend on 3000, backend on 8000), use SameSite=None and path="/".
     # In production over HTTPS, set secure=True.
-    # No max_age since the token doesn't expire
+    # Set max_age to match token expiration (100 years in seconds)
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -276,6 +277,7 @@ async def login(
         samesite="none",  # Use None for cross-site cookies in production
         secure=True,  # True in production with HTTPS
         path="/",
+        max_age=60 * 60 * 24 * 365 * 100,  # 100 years in seconds
     )
     
     # Return success response with redirect URL

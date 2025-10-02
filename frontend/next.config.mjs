@@ -1,23 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  reactStrictMode: true,
+  output: 'export',
+  images: {
+    unoptimized: true,
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },
   typescript: {
     ignoreBuildErrors: true,
-  },
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
-  experimental: {
-    optimizeCss: true
-  },
-  images: {
-    domains: ['localhost'],
-    unoptimized: true
-  },
-  // Enable gzip compression
-  compress: true
+  }
+  // Uncomment if you need trailing slashes
+  // trailingSlash: true,
 }
 
 export default nextConfig

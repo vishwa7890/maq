@@ -6,6 +6,7 @@ import time
 import uuid
 import shutil
 import io
+import re
 from functools import lru_cache
 from pathlib import Path
 import asyncio
@@ -15,7 +16,7 @@ from fastapi import (
     APIRouter, Depends, HTTPException, Request, 
     BackgroundTasks, status, UploadFile, File, Body, Query, Header, Response
 )
-from typing import List, Dict, Any, Optional, Union, Tuple
+from typing import List, Dict, Any, Optional, Union, Tuple, Set
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
@@ -40,16 +41,18 @@ from models import (
     ChatMessageORM, User, ChatSessionORM, DocumentORM, QuoteInteractionORM
 )
 from app.schemas import (
-    ChatRequest, 
-    QuoteInteraction, 
-    QuoteResponse, 
-    ChatSessionCreate, 
-    ChatSessionUpdate, 
-    ChatSessionResponse, 
-    ChatMessageCreate, 
+    ChatRequest,
+    QuoteInteraction,
+    QuoteResponse,
+    ChatSessionCreate,
+    ChatSessionUpdate,
+    ChatSessionResponse,
+    ChatMessageCreate,
     ChatMessageResponse,
     QuoteRequest as QuoteRequestModel,
-    PremiumQuotationRequest
+    PremiumQuotationRequest,
+    AnalysisPromptRequest,
+    AnalysisPromptResponse,
 )
 from app.knowledge_graph import BusinessKnowledgeGraph, Entity
 from app.rag_engine import get_rag_context, get_rag_context_sync
@@ -76,6 +79,120 @@ API_URL = os.getenv("API_URL")
 MODEL_NAME = os.getenv("MODEL_NAME")
 MAX_PROMPT_LENGTH = 4000
 MAX_CHATS_FOR_NORMAL_USERS = 5
+
+# --- Business content heuristics -------------------------------------------------
+BUSINESS_KEYWORDS: Set[str] = {
+    # Project estimation & services
+    'cost', 'price', 'estimate', 'estimation', 'quotation', 'quote', 'budget', 'timeline',
+    'deadline', 'scope', 'deliverable', 'milestone', 'proposal', 'rfp', 'sow',
+    'ui', 'ux', 'ui ux', 'design', 'branding', 'development', 'software', 'application',
+    'app', 'website', 'web', 'mobile', 'frontend', 'backend', 'full', 'stack', 'prototype',
+    'wireframe', 'integration', 'deployment', 'maintenance', 'support', 'refactor',
+    'migration', 'implementation',
+
+    # Pricing & plans
+    'pricing', 'plan', 'gst', 'tax', 'payment', 'discount', 'subscription', 'billing',
+    'licensing', 'invoice', 'contract', 'retainer', 'quotation', 'quotation', 'quote',
+
+    # Business strategy & planning
+    'strategy', 'planning', 'business', 'roadmap', 'market', 'marketing', 'sales', 'gtm',
+    'competitive', 'analysis', 'recommendation', 'tech', 'technology', 'scalable', 'growth',
+    'expansion', 'roi', 'kpi', 'okr', 'research', 'advisory', 'consulting', 'optimization',
+
+    # Operations & domains
+    'workflow', 'process', 'automation', 'digital', 'transformation', 'crm', 'erp', 'inventory',
+    'logistics', 'supply', 'chain', 'manufacturing', 'production', 'operations', 'procurement',
+    'compliance', 'regulation', 'governance', 'hr', 'finance', 'accounting', 'budgeting',
+    'cashflow', 'customer', 'vendor', 'supplier',
+
+    # Industry and solution triggers
+    'industry', 'sector', 'domain', 'vertical', 'solution', 'model', 'startup', 'enterprise',
+    'b2b', 'b2c', 'd2c', 'saas', 'fintech', 'healthcare', 'edtech', 'retail', 'ecommerce',
+    'hospitality', 'real', 'estate', 'insurance', 'analytics', 'data', 'dashboard', 'reporting',
+    'cloud', 'aws', 'azure', 'gcp', 'salesforce', 'hubspot', 'ai', 'ml'
+}
+
+BUSINESS_PHRASES: Set[str] = {
+    'project estimate', 'project estimation', 'service quotation', 'service quote',
+    'project quotation', 'project quote', 'mobile app development', 'web app development',
+    'ui ux design', 'product roadmap', 'go to market', 'digital transformation',
+    'process automation', 'supply chain optimization', 'customer acquisition strategy',
+    'marketing automation', 'crm implementation', 'erp migration',
+    'technology stack recommendation', 'payment terms', 'pricing plan', 'budget planning',
+    'business strategy', 'business plan', 'saas pricing', 'enterprise solution',
+    'industry specific solution', 'project timeline', 'cost breakdown',
+    'resource planning', 'capacity planning', 'return on investment'
+}
+
+BUSINESS_PATTERN_REGEX = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in [
+        r'how much\s+.*cost',
+        r'what\s+.*price',
+        r'(estimate|estimation).*project',
+        r'project.*(estimate|estimation|timeline|budget)',
+        r'(service|services).*(package|pricing|quotation|estimate)',
+        r'pricing.*plan',
+        r'business.*strategy',
+        r'tech.*stack',
+        r'development.*cost',
+        r'design.*service',
+        r'consulting.*fee',
+        r'payment.*terms',
+        r'(industry|sector).*(solution|strategy|plan)',
+        r'(crm|erp).*(implementation|migration)',
+        r'(marketing|sales).*(plan|strategy|automation)',
+        r'supply\s+chain.*(optimization|solution)',
+        r'quote.*(service|project|work)'
+    ]
+]
+
+NON_BUSINESS_PATTERN_REGEX = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in [
+        r'\bweather\b', r'\bjoke\b', r'\bcook\b', r'capital.*france', r'\bhomework\b',
+        r'meaning.*life', r'\bhobby\b', r'\bmovie\b', r'\bguitar\b', r'\brecipe\b',
+        r'\bbook\s+report\b', r'\bpopulation\b', r'\bexercise\b', r'\bsports?\b',
+        r'\bcelebrity\b', r'\btravel\b', r'\bholiday\b'
+    ]
+]
+
+FALLBACK_BUSINESS_TERMS: Set[str] = {
+    'project', 'service', 'services', 'quote', 'quotation', 'pricing', 'business', 'client',
+    'customer', 'vendor', 'proposal', 'budget', 'plan', 'cost', 'timeline', 'estimate', 'invoice',
+    'contract', 'payment', 'support', 'delivery'
+}
+
+
+def _extend_business_terms_from_env():
+    """Allow runtime extension of business heuristics via env variables."""
+    additional_keywords = os.getenv("ADDITIONAL_BUSINESS_KEYWORDS", "")
+    additional_phrases = os.getenv("ADDITIONAL_BUSINESS_PHRASES", "")
+    additional_patterns = os.getenv("ADDITIONAL_BUSINESS_PATTERNS", "")
+
+    for raw in additional_keywords.split(','):
+        token = raw.strip().lower()
+        if not token:
+            continue
+        BUSINESS_KEYWORDS.add(token)
+
+    for raw in additional_phrases.split(','):
+        phrase = raw.strip().lower()
+        if not phrase:
+            continue
+        BUSINESS_PHRASES.add(phrase)
+
+    for raw in additional_patterns.split('||'):
+        pattern = raw.strip()
+        if not pattern:
+            continue
+        try:
+            BUSINESS_PATTERN_REGEX.append(re.compile(pattern, re.IGNORECASE))
+        except re.error:
+            logger.warning("Invalid regex provided in ADDITIONAL_BUSINESS_PATTERNS: %s", pattern)
+
+
+_extend_business_terms_from_env()
 
 # Configure logging
 logging.basicConfig(
@@ -137,215 +254,133 @@ try:
 except Exception as e:
     logger.error(f"Failed to load system prompt from file: {e}")
     # Fallback to default prompt
-    SYSTEM_PROMPT = """You are VilaiMathi AI, an expert in business quotes and estimates. Your goal is to provide accurate, relevant, and actionable business advice with properly formatted tables.
+    SYSTEM_PROMPT = """You are VilaiMathi AI, a conversational business assistant like ChatGPT, but specialized exclusively in business topics.
 
-**IMPORTANT: This system is designed exclusively for business-related queries. You should only respond to questions about:**
+**YOUR ROLE:**
+Communicate naturally and helpfully about business matters - quotes, estimates, project planning, strategy, pricing, and commercial advice. Be conversational, clear, and professional.
 
-🧠 **Business-Only RAG Questions:**
-• Project Estimation & Services (UI/UX, Software Development)
-• Pricing & Plans (Cost breakdowns, Payment terms)  
-• Business Strategy & Planning (Tech stack recommendations, Industry analysis)
+**BUSINESS-ONLY FOCUS:**
+You ONLY handle business topics: project estimation, pricing, business strategy, technology recommendations, marketing, sales, operations, finance, CRM, ERP, software development, design services.
 
-**Examples of Business Questions:**
-- "What is the estimated cost for a UI/UX design project?"
-- "Can you generate a quotation for mobile app development?"
-- "What's the pricing structure for web development services?"
-- "How much do you charge for a design system?"
-- "What's the typical timeline for a website project?"
-- "Which tech stack is suitable for enterprise software?"
-- "Do you offer discounts for startups?"
-- "What are your payment terms for enterprise clients?"
+If asked about non-business topics, politely redirect: "I specialize in business topics like quotes, pricing, and commercial advice. How can I help with your business needs?"
 
-**CRITICAL FORMATTING RULES FOR TABLES:**
+**HOW TO RESPOND:**
 
-1. **Table Structure**:
-   - Always use proper markdown table syntax
-   - Tables must start and end with a blank line
-   - Every row must have the same number of columns
-   - Use alignment (e.g., `:---|:---:|---:`) for better readability
+For general business questions:
+- Answer naturally and conversationally (like ChatGPT)
+- Be clear and helpful
+- Use bullet points or paragraphs as appropriate
+- Give examples when helpful
+- Adapt your tone to the user's style
 
-2. **Products Table Format**:
-   ```markdown
-   ### 🛍️ Products
-   | Product | Qty | Rate (INR) | Amount (INR) |
-   |---------|:---:|:----------:|:------------:|
-   | Website Hosting | 1 | 2,000 | 2,000 |
-   | SSL Certificate | 1 | 1,500 | 1,500 |
-   | **Total** | | | **3,500** |
-   ```
+For quotation requests:
+- Generate complete quotations immediately
+- Make reasonable assumptions based on industry standards
+- Include: header, overview, service breakdown (table), pricing summary (table), timeline, payment terms, terms & conditions, warranty, next steps
+- Use proper Markdown tables with thousand separators (50,000 not 50000)
+- Default currency: INR (₹)
+- Calculate totals accurately
 
-3. **Services Table Format**:
-   ```markdown
-   ### 🛠️ Services
-   | Service Type | Deliverables | Estimated Cost (INR) | Timeline |
-   |--------------|--------------|:-------------------:|:--------:|
-   | UI/UX Design | 5 Screens | 25,000 | 2 weeks |
-   | Development | Frontend | 45,000 | 4 weeks |
-   | **Total** | | **70,000** | **6 weeks** |
-   ```
+**EXAMPLE QUOTATION FORMAT:**
 
-4. **UI/UX Design Specific Format**:
-   ```markdown
-   ### 🎨 UI/UX Design Services
-   | Service Phase | Deliverables | Estimated Cost (INR) | Timeline |
-   |---------------|--------------|:-------------------:|:--------:|
-   | Research & Discovery | User interviews, Competitor analysis | 15,000 | 1 week |
-   | Wireframing | Low-fidelity wireframes | 20,000 | 2 weeks |
-   | UI Design | High-fidelity mockups | 35,000 | 3 weeks |
-   | Prototyping | Interactive prototypes | 25,000 | 2 weeks |
-   | Testing & Iteration | Usability testing, Revisions | 15,000 | 1 week |
-   | **Total** | | **110,000** | **9 weeks** |
-   ```
+## Professional Quotation
 
-5. **Important Notes**:
-   - Always include a header row and a separator row
-   - Use `**bold**` for important figures and totals
-   - Keep text in cells concise and left-aligned
-   - Align numbers to the right using `:---:` or `---:`
-   - Use emojis to make sections more scannable
-   - All currencies are acceptable (e.g., USD, EUR, GBP, INR, etc.) - use the currency that makes the most sense for the context
-   - Add a total row at the bottom of each table
-   - NEVER respond with plain text documents - ALWAYS use tables
+**Quotation Details:**
+- Number: QT-2025-001
+- Date: [Current Date]
+- Valid Until: [30 days]
+- Project: [Name]
 
-6. **Common Emojis to Use**:
-   - 🛍️ Products
-   - 🛠️ Services
-   - 💰 Pricing
-   - ⏱️ Timeline
-   - 📱 Mobile App
-   - 🖥️ Website
-   - 🎨 Design
-   - 🔒 Security
+**Overview:** [Brief project description]
 
-**CRITICAL: You MUST respond with properly formatted markdown tables. NEVER respond with plain text documents or paragraphs. Always structure your response using the table formats shown above.**
+**Service Breakdown:**
+| Service Phase | Description | Deliverables | Cost (INR) | Timeline |
+|---------------|-------------|--------------|:----------:|:--------:|
+| Phase 1 | [Details] | [Items] | 25,000 | 2 weeks |
+| **Total** | | | **25,000** | **2 weeks** |
 
-**TABLE FORMATTING REQUIREMENTS:**
-- Every table MUST have proper markdown separators (e.g., `| --- | --- | --- |`)
-- Every cell MUST be separated by `|` characters
-- Every row MUST end with `|`
-- Headers MUST be followed by a separator row
-- Example: `| Header 1 | Header 2 | Header 3 |` followed by `| --- | --- | --- |`
+**Pricing Summary:**
+| Item | Amount (INR) |
+|------|:------------:|
+| Services | 25,000 |
+| GST (18%) | 4,500 |
+| **Grand Total** | **29,500** |
 
-**Example Response Format:**
+**Payment Terms:** 50% advance, 50% on completion
+**Timeline:** [Milestones]
+**Terms:** [Revision policy, IP rights, warranty]
+**Next Steps:** [How to proceed]
 
-```markdown
-### 🎨 UI/UX Design Services
-| Service Phase | Deliverables | Estimated Cost (INR) | Timeline |
-|---------------|--------------|:-------------------:|:--------:|
-| Research & Discovery | User interviews, Competitor analysis | 15,000 | 1 week |
-| Wireframing | Low-fidelity wireframes | 20,000 | 2 weeks |
-| UI Design | High-fidelity mockups | 35,000 | 3 weeks |
-| Prototyping | Interactive prototypes | 25,000 | 2 weeks |
-| Testing & Iteration | Usability testing, Revisions | 15,000 | 1 week |
-| **Total** | | **110,000** | **9 weeks** |
-```
+**DISCOUNT POLICY:**
+- 100+ hours: 5% discount
+- Repeat clients: 10% discount
 
-'''discount table format only for quotation requests otherwise ignore '''
-
-| **Discount**    | [Discount]      |
-
-**IMPORTANT:**
-- ALWAYS respond with properly formatted markdown tables
-- Use the exact table structures shown above
-- Include both Products and Services sections when relevant
-- Ensure all monetary values are in INR
-- Be professional, helpful, and concise in your responses
-- NEVER respond with plain text documents
-
-**MANDATORY TABLE : only for quotation requests otherwise ignore**
-
-| Section         | Details         |
-|-----------------|----------------|
-| **Client Name** | [Client's Name] |
-| **Project Name**| [Project Title] |
-| **Date**        | [Today's Date]  |
-
-This summary table must always be the first table in your response, before any other tables.
+Remember: Be like ChatGPT - helpful, conversational, natural - but only for business topics!
 """
 
 def is_business_related(query: str) -> bool:
-    """Check if the query is business-related.
-    Broadened to include common phrasing and normalize symbols.
-    """
-    import re
-    # Normalize input: lowercase, '&' -> 'and', strip punctuation to spaces, collapse spaces
-    q = (query or "").lower()
-    q = q.replace('&', ' and ')
-    q = re.sub(r"[^a-z0-9\s]", " ", q)
-    q = re.sub(r"\s+", " ", q).strip()
+    """Check if the query is business-related using layered heuristics."""
 
-    # Expanded business-related keywords and phrases
-    business_keywords = [
-        # Project Estimation & Services
-        'cost', 'price', 'estimate', 'estimation', 'quotation', 'quote', 'budget', 'timeline', 'deadline',
-        'ui ux', 'ui', 'ux', 'design', 'development', 'software', 'app', 'website', 'web',
-        'mobile', 'frontend', 'backend', 'full stack', 'prototype', 'wireframe',
-        'service', 'services', 'package', 'project', 'deliverable', 'milestone', 'proposal', 'rfp',
+    normalized = (query or "").lower()
+    normalized = normalized.replace('&', ' and ')
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
 
-        # Pricing & Plans
-        'pricing', 'plan', 'gst', 'tax', 'payment', 'discount', 'startup',
-        'enterprise', 'premium', 'basic', 'subscription', 'billing',
+    if not normalized:
+        logger.debug("Business check failed: empty normalized query")
+        return False
 
-        # Business Strategy & Planning
-        'strategy', 'planning', 'business', 'industry', 'market', 'competitive',
-        'analysis', 'recommendation', 'tech stack', 'technology', 'scalable',
-        'mvp', 'saas', 'platform', 'optimization', 'branding', 'research',
+    tokens = set(normalized.split())
 
-        # Technology & Development
-        'programming', 'coding', 'framework', 'database', 'api', 'integration', 'deployment',
+    positive_score = 0
 
-        # Industry & Domain
-        'sector', 'domain', 'vertical', 'business model',
-        'revenue', 'profit', 'investment', 'roi', 'growth', 'scale',
-        'capital investment', 'business capital', 'venture capital',
+    # Phrase detection gives strong signal
+    for phrase in BUSINESS_PHRASES:
+        if phrase in normalized:
+            positive_score += 2
 
-        # Common business terms
-        'client', 'customer', 'vendor', 'supplier', 'partner', 'stakeholder',
-        'requirement', 'specification', 'scope', 'quality',
-        'maintenance', 'support', 'consulting', 'advisory', 'expertise',
+    # Keyword matching (token based and substring for multi-word)
+    for keyword in BUSINESS_KEYWORDS:
+        if ' ' in keyword:
+            if keyword in normalized:
+                positive_score += 1
+        elif keyword in tokens:
+            positive_score += 1
 
-        # Additional triggers
-        'portfolio', 'estimate cost', 'project estimate', 'service quotation', 'quote request'
-    ]
+    # Regex patterns for structured questions
+    for pattern in BUSINESS_PATTERN_REGEX:
+        if pattern.search(normalized):
+            positive_score += 2
 
-    # Quick keyword check
-    for kw in business_keywords:
-        if kw in q:
-            return True
+    # Immediate acceptance if multiple signals present
+    if positive_score >= 2:
+        logger.debug(
+            "Business check passed with positive_score=%s for query='%s'",
+            positive_score,
+            normalized,
+        )
+        return True
 
-    # Broader regex patterns
-    business_patterns = [
-        r'how much\s+.*cost',
-        r'what\s+.*price',
-        r'(estimate|estimation).*project',
-        r'project.*(estimate|estimation|timeline|budget)',
-        r'quote.*(service|project|work)',
-        r'(service|services).*(package|pricing|quotation|estimate)',
-        r'pricing.*plan',
-        r'business.*strategy',
-        r'tech.*stack',
-        r'development.*cost',
-        r'design.*service',
-        r'consulting.*fee',
-        r'payment.*terms',
-        r'industry.*recommendation',
-        r'portfolio.*(project|work|services)'
-    ]
-
-    # Non-business patterns
-    non_business_patterns = [
-        r'weather', r'joke', r'cook', r'capital.*france', r'homework', r'meaning.*life',
-        r'hobby', r'movie', r'guitar', r'recipe', r'book', r'population', r'car', r'exercise'
-    ]
-
-    for pattern in non_business_patterns:
-        if re.search(pattern, q):
+    # Negative patterns checked after positive signal attempt
+    for pattern in NON_BUSINESS_PATTERN_REGEX:
+        if pattern.search(normalized):
+            logger.debug(
+                "Business check failed due to non-business pattern %s for query='%s'",
+                pattern.pattern,
+                normalized,
+            )
             return False
 
-    for pattern in business_patterns:
-        if re.search(pattern, q):
-            return True
+    # Fallback token overlap
+    if tokens & FALLBACK_BUSINESS_TERMS:
+        logger.debug(
+            "Business check passed via fallback tokens=%s for query='%s'",
+            tokens & FALLBACK_BUSINESS_TERMS,
+            normalized,
+        )
+        return True
 
+    logger.debug("Business check failed: insufficient business signals for query='%s'", normalized)
     return False
 
 def fix_table_formatting(text: str) -> str:
@@ -506,7 +541,7 @@ def format_chat_history(messages: List[Dict[str, str]]) -> str:
             formatted.append(f"{msg.role}: {msg.content}")
     return "\n".join(formatted) if formatted else "No history"
 
-async def _call_llm(prompt: str, max_retries: int = 3) -> str:
+async def _call_llm(prompt: str, max_retries: int = 3, *, tables_only: bool = True) -> str:
     """Call the model via OpenRouter API with optimized RAG/KG prompting.
     
     Args:
@@ -598,14 +633,18 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
                     
                     logger.info(f"Received response (length: {len(response_text)} chars)")
                     
-                    # Ensure we always return valid markdown and enforce table-only output
+                    # Ensure we always return valid output. Some flows require strict table formatting,
+                    # while others need free-form text (e.g., prompt generation).
                     original_text = response_text or ""
-                    response_text = enforce_tables_only(original_text)
-                    if not response_text.strip():
-                        # Fallback: if the model produced no tables and everything was stripped,
-                        # return a default, valid table scaffold so the UI never sees empty content.
-                        logger.warning("Model returned no table content; using default estimate tables fallback.")
-                        response_text = generate_default_estimate_tables()
+                    if tables_only:
+                        response_text = enforce_tables_only(original_text)
+                        if not response_text.strip():
+                            # Fallback: if the model produced no tables and everything was stripped,
+                            # return a default, valid table scaffold so the UI never sees empty content.
+                            logger.warning("Model returned no table content; using default estimate tables fallback.")
+                            response_text = generate_default_estimate_tables()
+                    else:
+                        response_text = original_text.strip()
                     
                     # Ensure we always return a valid string response
                     response_text = str(response_text or "").strip()
@@ -661,6 +700,58 @@ async def _call_llm(prompt: str, max_retries: int = 3) -> str:
         except Exception as e:
             logger.error(f"Error in _call_llm: {str(e)}", exc_info=True)
             return f"I apologize, but an unexpected error occurred. Please try again later. Request: {str(e)}"
+
+
+@router.post("/analysis/prompt", response_model=AnalysisPromptResponse)
+async def generate_analysis_prompt(
+    payload: AnalysisPromptRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a business analysis prompt using the configured LLM."""
+
+    # Ensure the request remains within business-use scope
+    topic_blob = " ".join(filter(None, [payload.topic, payload.context]))
+    if not is_business_related(topic_blob):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide a business-focused topic or context to generate an analysis prompt.",
+        )
+
+    # Build instruction for the LLM (4-6 condensed lines)
+    user_name = getattr(current_user, "username", "Business User")
+    prompt_lines = [
+        "You are VilaiMathi AI. Craft a concise business-analysis prompt another AI system will execute.",
+        "Respond as a markdown bullet list containing between 4 and 6 lines total.",
+        "Each bullet should be a single sentence blending objectives, critical inputs, analytical focus, insight expectations, or key risk/next steps.",
+        "Do not include section headings, numbering, or extra commentary before/after the bullet list.",
+        "Match the requested tone; use a professional tone if none is provided.",
+        "",
+        "Context for the prompt you are authoring:",
+        f"- Requesting user: {user_name}",
+        f"- Primary topic: {payload.topic.strip()}",
+    ]
+
+    if payload.context:
+        prompt_lines.append(f"- Additional context: {payload.context.strip()}")
+    if payload.tone:
+        prompt_lines.append(f"- Desired tone: {payload.tone.strip()}")
+
+    prompt_lines.extend(
+        [
+            "",
+            "Ensure the bullets collectively cover: analysis goal, important data or resources, analytical methods/frameworks, expected insights or recommendations, and critical risk or validation reminders.",
+            "Return only the bullet list—no explanations or closing remarks.",
+        ]
+    )
+
+    llm_prompt = "\n".join(prompt_lines)
+    raw_response = await _call_llm(llm_prompt, tables_only=False)
+
+    return AnalysisPromptResponse(
+        prompt=raw_response.strip(),
+        suggestions=None,
+    )
+
 
 @router.post("/sessions/", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_chat_session(

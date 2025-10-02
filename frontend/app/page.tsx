@@ -8,13 +8,10 @@ import { FeedbackForm } from '@/components/feedback-form'
 
 import { Footer } from '@/components/footer';
 import StatsSection from '@/components/stats-section';
-import VisitorTracker from '@/components/VisitorTracker';
-import VisitorCounter from '@/components/VisitorCounter';
 
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen">
-      <VisitorTracker page="/" />
       <main className="relative flex-grow overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50">
 
       {/* Decorative background */}
@@ -100,10 +97,6 @@ export default function LandingPage() {
         <StatsSection />
       </div>
 
-      {/* Visitor Counter Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 bg-white/50 backdrop-blur-sm rounded-3xl mx-4 mb-8">
-        <VisitorCounter />
-      </section>
 
       {/* Features */}
       <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">

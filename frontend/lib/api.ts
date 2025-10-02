@@ -68,19 +68,31 @@ export async function apiFetch(path: string, opts: FetchOptions = {}) {
     let message = res.statusText
     let shouldLogout = false
     
-    // Handle specific error cases
-    if (res.status === 401) {
-      message = 'Your session has expired. Please log in again to continue.'
-      // Do not auto-logout for auth endpoints like /auth/me where 401 is expected
-      shouldLogout = !isAuthMe && !isAuthEndpoint
-    } else if (res.status === 403) {
-      message = 'You do not have permission to perform this action.'
-      // Avoid recursive logout for auth routes
-      shouldLogout = !isAuthEndpoint
-    } else if (typeof data === 'string') {
+    // Extract error message from response first
+    if (typeof data === 'string') {
       message = data
     } else if (data) {
       message = data.detail || data.error?.message || data.message || res.statusText
+    }
+    
+    // Handle specific error cases
+    if (res.status === 401) {
+      // For login/register endpoints, show the actual error (e.g., "Incorrect username or password")
+      // For other endpoints, show session expired message
+      if (!isAuthEndpoint || isAuthMe) {
+        // Only override message if it's generic
+        if (!message || message === 'Unauthorized') {
+          message = 'Your session has expired. Please log in again to continue.'
+        }
+      }
+      // Do not auto-logout for auth endpoints like /auth/me or /auth/login where 401 is expected
+      shouldLogout = !isAuthMe && !isAuthEndpoint
+    } else if (res.status === 403) {
+      if (!message || message === 'Forbidden') {
+        message = 'You do not have permission to perform this action.'
+      }
+      // Avoid recursive logout for auth routes
+      shouldLogout = !isAuthEndpoint
     }
     
     // Clear auth state if needed
@@ -134,6 +146,8 @@ export const api = {
     } catch {}
     return result
   },
+  generateAnalysisPrompt: (payload: { topic: string; context?: string; tone?: string }) =>
+    apiFetch('/api/chat/analysis/prompt', { method: 'POST', json: payload }),
   logout: async () => {
     const result = await apiFetch('/auth/logout', { method: 'POST' })
     try {

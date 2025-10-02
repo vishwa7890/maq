@@ -7,14 +7,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { MessageCircle, Plus, Send, Upload, Download, Edit3, BarChart3, User, Bot, FileText, Crown, Clipboard } from 'lucide-react'
+import { MessageCircle, Plus, Send, Upload, Download, Edit3, BarChart3, User, Bot, FileText, Crown, Clipboard, Sparkles, ArrowDown } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { ChatSidebar, MobileSidebarTrigger } from '@/components/chat-sidebar'
 import { UserProfileButton } from '@/components/user-profile-button'
 import { PlanLimitationsNotice } from '@/components/plan-limitations-notice'
 import { downloadMessageAsPdf } from '@/components/print-pdf'
 import { api } from '@/lib/api'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import Image from 'next/image'
@@ -56,6 +56,12 @@ export default function ChatPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
+  const [promptTopic, setPromptTopic] = useState('')
+  const [promptTone, setPromptTone] = useState('Professional')
+  const [promptResult, setPromptResult] = useState('')
+  const [promptSuggestions, setPromptSuggestions] = useState<string[]>([])
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // --- Helpers & Handlers (top-level scope) ---
@@ -94,6 +100,37 @@ export default function ChatPage() {
     setIsEditOpen(false)
     setEditingMessageId(null)
   }, [editingMessageId, editContent])
+
+  const handleGeneratePrompt = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setIsGeneratingPrompt(true)
+    setPromptResult('')
+    setPromptSuggestions([])
+    try {
+      const payload = {
+        topic: promptTopic,
+        tone: promptTone || undefined,
+      }
+      const result = await api.generateAnalysisPrompt(payload)
+      setPromptResult(result?.prompt ?? '')
+      setPromptSuggestions(result?.suggestions ?? [])
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Prompt generation failed',
+        description: error?.message || 'Unable to generate prompt. Please try again.',
+      })
+    } finally {
+      setIsGeneratingPrompt(false)
+    }
+  }
+
+  const applyGeneratedPrompt = () => {
+    if (promptResult) {
+      setInputValue(promptResult)
+      setIsPromptModalOpen(false)
+    }
+  }
 
   // Memoized markdown conversion for performance
   const mdEscapeHtml = useCallback((s: string) => s
@@ -528,7 +565,7 @@ export default function ChatPage() {
                 </Card>
               </div>
             )}
-            
+
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
@@ -537,22 +574,48 @@ export default function ChatPage() {
         <div className="bg-white border-t p-3 lg:p-6 safe-area-inset-bottom">
           <div className="max-w-4xl mx-auto">
             <div className="flex justify-center">
-              <div className="w-full max-w-3xl relative">
+              <div className="flex w-full max-w-3xl gap-2 items-center">
                 <Input
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Describe your project requirements..."
-                  className="pr-12 h-12 lg:h-12 text-base lg:text-sm"
-                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                  onChange={e => setInputValue(e.target.value)}
+                  onKeyDown={e => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault()
+                      handleSendMessage()
+                    }
+                  }}
+                  placeholder="Ask VilaiMathi AI for a business quote..."
+                  className="flex-1"
                 />
-                <Button
-                  size="sm"
-                  className="absolute right-1 top-1 h-10 lg:h-10"
-                  onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isLoading}
-                >
-                  <Send className="h-5 w-5" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button onClick={handleSendMessage} disabled={isLoading}>
+                    {isLoading ? 'Sending...' : <Send className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={user?.role === 'premium' ? 'default' : 'outline'}
+                    className="flex items-center gap-2"
+                    disabled={user?.role !== 'premium'}
+                    onClick={() => {
+                      if (user?.role !== 'premium') {
+                        toast({
+                          title: 'Premium feature',
+                          description: 'Upgrade to Premium to use the Prompt Booster.',
+                          variant: 'destructive',
+                        })
+                        return
+                      }
+                      setPromptTopic('')
+                      setPromptTone('Professional')
+                      setPromptResult('')
+                      setPromptSuggestions([])
+                      setIsPromptModalOpen(true)
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Prompt Booster
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -560,52 +623,108 @@ export default function ChatPage() {
 
         {/* Edit Dialog */}
         <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-          <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+          <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Edit3 className="h-5 w-5" />
-                Edit Assistant Response
+                Edit assistant response
               </DialogTitle>
+              <DialogDescription>
+                Make quick corrections to the assistant message. This won't send anything to the model.
+              </DialogDescription>
             </DialogHeader>
-            
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
-              {/* Editor */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Edit Content</label>
-                <Textarea 
-                  value={editContent} 
-                  onChange={(e) => setEditContent(e.target.value)} 
-                  className="min-h-[300px] font-mono text-sm resize-none"
-                  placeholder="Edit the assistant response content..."
-                />
-                <div className="text-xs text-gray-500">
-                  {editContent.length} characters
-                </div>
-              </div>
-              
-              {/* Simplified Preview */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Preview</label>
-                <div className="border rounded-md p-4 min-h-[300px] bg-gray-50 overflow-auto">
-                  <div className="whitespace-pre-wrap text-sm font-mono">
-                    {editContent || 'Preview will appear here...'}
-                  </div>
-                </div>
-              </div>
+            <div className="space-y-3">
+              <Textarea
+                value={editContent}
+                onChange={event => setEditContent(event.target.value)}
+                className="min-h-[180px]"
+              />
             </div>
-            
-            <DialogFooter className="flex justify-between items-center pt-4 border-t">
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                Changes will be saved locally
+            <DialogFooter className="flex justify-between">
+              <Button variant="ghost" onClick={() => setIsEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={saveEdit}>
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Prompt Enhancer Modal */}
+        <Dialog open={isPromptModalOpen} onOpenChange={setIsPromptModalOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600" />
+                Prompt Booster
+              </DialogTitle>
+              <DialogDescription>
+                Generate a deep-dive business analysis prompt, then insert it into the chat.
+              </DialogDescription>
+            </DialogHeader>
+            <ScrollArea className="max-h-[70vh] pr-2">
+              <div className="grid gap-6 md:grid-cols-[360px_1fr]">
+                <form className="space-y-4" onSubmit={handleGeneratePrompt}>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground" htmlFor="prompt-topic">
+                      Topic or question
+                    </label>
+                    <Textarea
+                      id="prompt-topic"
+                      required
+                      value={promptTopic}
+                      onChange={event => setPromptTopic(event.target.value)}
+                      placeholder="e.g., Evaluate financial viability of launching in APAC"
+                      className="min-h-[110px] resize-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground" htmlFor="prompt-tone">
+                      Desired Tone
+                    </label>
+                    <Input
+                      id="prompt-tone"
+                      value={promptTone}
+                      onChange={event => setPromptTone(event.target.value)}
+                      placeholder="Professional, concise, data-driven..."
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={isGeneratingPrompt}>
+                    {isGeneratingPrompt ? 'Generating...' : 'Generate Analysis Prompt'}
+                  </Button>
+                </form>
+                <div className="space-y-4">
+                  <div className="rounded-lg border bg-slate-50 p-4 text-sm leading-6 whitespace-pre-wrap font-mono min-h-[260px]">
+                    {promptResult || 'Generated prompt will appear here. Provide details and click generate.'}
+                  </div>
+                  {promptSuggestions.length > 0 && (
+                    <div className="space-y-2">
+                      <Separator />
+                      <h3 className="text-sm font-semibold text-slate-700">Suggested follow-ups</h3>
+                      <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
+                        {promptSuggestions.map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setIsEditOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={saveEdit} className="bg-blue-600 hover:bg-blue-700">
-                  Save Changes
-                </Button>
+            </ScrollArea>
+            <DialogFooter>
+              <div className="flex items-center justify-between w-full">
+                <p className="text-xs text-muted-foreground">
+                  Prompts use your configured AI model key. Update backend `.env` to rotate keys when needed.
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => setIsPromptModalOpen(false)}>
+                    Close
+                  </Button>
+                  <Button onClick={applyGeneratedPrompt} disabled={!promptResult}>
+                    Use in Chat
+                  </Button>
+                </div>
               </div>
             </DialogFooter>
           </DialogContent>

@@ -30,10 +30,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # JWT helpers
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    # Only add expiration if explicitly provided, otherwise create a token that never expires
-    if expires_delta is not None:
-        expire = datetime.utcnow() + expires_delta
-        to_encode.update({"exp": expire})
+    # Always add expiration - default to 100 years if not provided
+    if expires_delta is None:
+        expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -41,7 +42,8 @@ def decode_access_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except JWTError:
+    except JWTError as e:
+        logger.error(f"JWT decode error: {str(e)}")
         return None
 
 # User DB helpers
@@ -79,15 +81,17 @@ async def get_current_user(
     try:
         # Safe debug: log whether cookie present and its length only
         token_len = len(token) if token else 0
-        logger.info(f"Auth cookie present: {bool(token)}, length: {token_len}")
+        logger.debug(f"Auth cookie present: {bool(token)}, length: {token_len}")
     except Exception:
         pass
+    
     if not token:
         # Fallback to Authorization header
         auth = request.headers.get("Authorization") or request.headers.get("authorization")
         if auth and auth.lower().startswith("bearer "):
             token = auth[7:]
         else:
+            logger.warning("No token found in cookies or Authorization header")
             raise credentials_exception
     else:
         # Remove 'Bearer ' prefix if present in cookie
@@ -100,6 +104,17 @@ async def get_current_user(
         if username is None:
             logger.warning("JWT decoded but no 'sub' in payload: %s", payload)
             raise credentials_exception
+        
+        # Check if token is expired (even though we set it to 100 years)
+        exp = payload.get("exp")
+        if exp:
+            from datetime import datetime
+            exp_datetime = datetime.fromtimestamp(exp)
+            now = datetime.utcnow()
+            if now > exp_datetime:
+                logger.warning(f"Token expired. Exp: {exp_datetime}, Now: {now}")
+                raise credentials_exception
+            
     except JWTError as e:
         logger.warning("JWT decode failed: %s", str(e))
         raise credentials_exception
