@@ -12,22 +12,22 @@ import StatsSection from '@/components/stats-section';
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen">
-      <main className="relative flex-grow overflow-hidden bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <main className="relative flex-grow overflow-hidden bg-gradient-to-br from-[#F5F5F5] via-white to-[#4BB3FD]">
 
       {/* Decorative background */}
-      <div className="pointer-events-none absolute -top-24 -left-24 h-[28rem] w-[28rem] rounded-full bg-blue-200/40 blur-3xl -z-10" />
-      <div className="pointer-events-none absolute -bottom-24 -right-24 h-[28rem] w-[28rem] rounded-full bg-pink-200/40 blur-3xl -z-10" />
+      <div className="pointer-events-none absolute -top-24 -left-24 h-[28rem] w-[28rem] rounded-full bg-[#4BB3FD]/40 blur-3xl -z-10" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-[28rem] w-[28rem] rounded-full bg-[#4338CA]/40 blur-3xl -z-10" />
       
       {/* Hero */}
       <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 md:pt-24 pb-12 md:pb-16 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-white/80 px-3 sm:px-4 py-1.5 text-xs sm:text-sm text-blue-600 mb-4 sm:mb-6">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[#4338CA]/30 bg-white/80 px-3 sm:px-4 py-1.5 text-xs sm:text-sm text-[#17494D] mb-4 sm:mb-6">
           <Sparkles className="h-3 w-3 sm:h-4 sm:w-4" /> 🚀 AI-Powered Quotation Generator
         </div>
         <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold leading-tight mb-4 sm:mb-6 px-2">
           <span className="block sm:inline">Generate </span>
-          <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Smart</span>
+          <span className="bg-gradient-to-r from-[#17494D] to-[#4338CA] bg-clip-text text-transparent">Smart</span>
           <span className="block sm:inline"> </span>
-          <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Professional Quotations</span>
+          <span className="bg-gradient-to-r from-[#4338CA] to-[#4BB3FD] bg-clip-text text-transparent">Professional Quotations</span>
           <span className="block sm:inline"> </span>
           <span className="text-gray-900">in Seconds</span>
         </h1>
@@ -36,7 +36,10 @@ export default function LandingPage() {
         </p>
         <div className="flex flex-col sm:flex-row justify-center gap-4 mb-8 px-4">
           <Link href="/auth" className="w-full sm:w-auto">
-            <Button size="lg" className="w-full sm:w-auto px-8 py-3 text-base sm:text-lg">
+            <Button
+              size="lg"
+              className="w-full sm:w-auto px-8 py-3 text-base sm:text-lg bg-[#17494D] hover:bg-[#12373A]"
+            >
               Generate Your First Quotation
             </Button>
           </Link>
@@ -49,7 +52,7 @@ export default function LandingPage() {
             <Button 
               variant="outline" 
               size="lg" 
-              className="w-full sm:w-auto px-8 py-3 text-base sm:text-lg border-2"
+              className="w-full sm:w-auto px-8 py-3 text-base sm:text-lg border-2 border-[#4338CA] text-[#4338CA] hover:bg-[#4338CA]/10"
             >
               View Demo
             </Button>
@@ -59,7 +62,7 @@ export default function LandingPage() {
         {/* Demo Card */}
         <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-2xl p-4 sm:p-6 border">
           <div className="text-center sm:text-left">
-            <div className="flex items-center justify-center sm:justify-start gap-2 text-green-600 mb-3">
+            <div className="flex items-center justify-center sm:justify-start gap-2 text-[#17494D] mb-3">
               <Check className="h-5 w-5" />
               <span className="font-semibold">Quotation Generated Successfully ✨</span>
             </div>
@@ -82,10 +85,10 @@ export default function LandingPage() {
               </div>
               <div className="flex justify-between font-semibold text-lg">
                 <span>Amount:</span>
-                <span className="text-green-600">₹50,000 + GST</span>
+                <span className="text-[#4338CA]">₹50,000 + GST</span>
               </div>
             </div>
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg text-center text-sm text-blue-700">
+            <div className="mt-4 p-3 bg-[#F5F5F5] rounded-lg text-center text-sm text-[#4338CA]">
               Ready for PDF/Word export...
             </div>
           </div>
@@ -103,8 +106,8 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
           <Card className="hover:shadow-xl transition-shadow border-0 shadow-lg">
             <CardHeader className="flex flex-row items-center gap-3">
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <Zap className="h-6 w-6 text-yellow-600" />
+              <div className="w-12 h-12 bg-[#4BB3FD]/20 rounded-lg flex items-center justify-center">
+                <Zap className="h-6 w-6 text-[#4BB3FD]" />
               </div>
               <CardTitle className="text-lg">Lightning Fast</CardTitle>
             </CardHeader>
@@ -114,8 +117,8 @@ export default function LandingPage() {
           </Card>
           <Card className="hover:shadow-xl transition-shadow border-0 shadow-lg">
             <CardHeader className="flex flex-row items-center gap-3">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <Lock className="h-6 w-6 text-green-600" />
+              <div className="w-12 h-12 bg-[#17494D]/10 rounded-lg flex items-center justify-center">
+                <Lock className="h-6 w-6 text-[#17494D]" />
               </div>
               <CardTitle className="text-lg">Secure & Reliable</CardTitle>
             </CardHeader>
@@ -125,8 +128,8 @@ export default function LandingPage() {
           </Card>
           <Card className="hover:shadow-xl transition-shadow border-0 shadow-lg">
             <CardHeader className="flex flex-row items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <FileText className="h-6 w-6 text-blue-600" />
+              <div className="w-12 h-12 bg-[#4338CA]/15 rounded-lg flex items-center justify-center">
+                <FileText className="h-6 w-6 text-[#4338CA]" />
               </div>
               <CardTitle className="text-lg">Multiple Formats</CardTitle>
             </CardHeader>
@@ -146,7 +149,7 @@ export default function LandingPage() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto">
           {/* Generate Your First Quotation */}
-          <Card className="hover:shadow-xl transition-shadow border-2 h-full flex flex-col">
+          <Card className="hover:shadow-xl transition-shadow border-2 border-[#17494D]/30 h-full flex flex-col">
             <CardHeader className="text-center pb-6 sm:pb-8">
               <CardTitle className="text-2xl">Generate Your First Quotation</CardTitle>
               <div className="text-4xl font-bold text-gray-900 mt-4">
@@ -157,22 +160,22 @@ export default function LandingPage() {
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>5 Free quotations</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>PDF export with watermark</span>
                 </div>
               </div>
               <Link href="/auth" className="block">
-                <Button className="w-full mt-6">Generate Your First Quotation</Button>
+                <Button className="w-full mt-6 bg-[#17494D] hover:bg-[#12373A]">Generate Your First Quotation</Button>
               </Link>
             </CardContent>
           </Card>
 
           {/* Pay Per Quote */}
-          <Card className="hover:shadow-xl transition-shadow border-2">
+          <Card className="hover:shadow-xl transition-shadow border-2 border-[#17494D]/30">
             <CardHeader className="text-center pb-8">
               <CardTitle className="text-2xl">Professional Plan</CardTitle>
               <div className="text-4xl font-bold text-gray-900 mt-4">
@@ -183,34 +186,34 @@ export default function LandingPage() {
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Premium professional quotations with detailed breakdowns</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Clean, watermark-free document exports</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>High-quality PDF exports with professional formatting</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Priority email & chat support</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Custom branding on all documents</span>
                 </div>
               </div>
-              <Button variant="outline" className="w-full mt-6">Buy Per Quote</Button>
+              <Button variant="outline" className="w-full mt-6 border-[#4338CA] text-[#4338CA] hover:bg-[#4338CA]/10">Buy Per Quote</Button>
             </CardContent>
           </Card>
 
           {/* Unlimited Annual */}
-          <Card className="hover:shadow-xl transition-shadow border-2 border-blue-500 relative">
+          <Card className="hover:shadow-xl transition-shadow border-2 border-[#4338CA] relative">
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-              <div className="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
+              <div className="bg-[#4338CA] text-white px-4 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
                 <Star className="h-4 w-4" />
                 Most Popular
               </div>
@@ -225,56 +228,56 @@ export default function LandingPage() {
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Unlimited quotations</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>All premium templates</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Watermark-free exports</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>PDF & Word export</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Priority support</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Custom branding</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Advanced analytics</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>Team collaboration</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4 text-green-600" />
+                  <Check className="h-4 w-4 text-[#17494D]" />
                   <span>API access</span>
                 </div>
               </div>
-              <Button className="w-full mt-6 bg-blue-600 hover:bg-blue-700">Comming Soon</Button>
+              <Button className="w-full mt-6 bg-[#4338CA] hover:bg-[#362CA7]">Comming Soon</Button>
             </CardContent>
           </Card>
         </div>
         
         <div className="text-center mt-8 text-gray-600">
           <p>All plans include 24/7 customer support and a 30-day money-back guarantee</p>
-          <p className="mt-2">Have questions? <a href="mailto:vilaimathiai@gmail.com" className="text-blue-600 hover:underline">Contact our sales team</a></p>
+          <p className="mt-2">Have questions? <a href="mailto:vilaimathiai@gmail.com" className="text-[#4338CA] hover:underline">Contact our sales team</a></p>
         </div>
       </section>
 
 
       {/* Feedback Section */}
-      <section id="feedback" className="py-16 bg-gray-50">
+      <section id="feedback" className="py-16 bg-[#F5F5F5]">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">We'd Love Your Feedback</h2>

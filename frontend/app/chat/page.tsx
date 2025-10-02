@@ -438,7 +438,7 @@ export default function ChatPage() {
   if (!user) return null
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-[#F5F5F5]">
       {/* Mobile-optimized sidebar */}
       <div className="hidden lg:block">
         <ChatSidebar
@@ -479,7 +479,7 @@ export default function ChatPage() {
             variant="ghost"
             size="sm"
             onClick={() => createNewSession()}
-            className="text-blue-600"
+            className="text-[#4338CA] hover:text-[#362CA7]"
           >
             <Plus className="h-4 w-4 mr-1" />
             New
@@ -507,13 +507,13 @@ export default function ChatPage() {
                 className={`flex gap-2 lg:gap-4 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {message.type === 'assistant' && (
-                  <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-1">
+                  <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-[#4338CA] flex items-center justify-center flex-shrink-0 mt-1">
                     <Bot className="h-3 w-3 lg:h-4 lg:w-4 text-white" />
                   </div>
                 )}
                 
                 <div className={`max-w-[85%] lg:max-w-3xl ${message.type === 'user' ? 'order-first' : ''}`}>
-                  <Card className={message.type === 'user' ? 'bg-blue-600 text-white rounded-2xl lg:rounded-xl' : 'bg-white rounded-2xl lg:rounded-xl shadow-sm border border-gray-100'}>
+                  <Card className={message.type === 'user' ? 'bg-[#17494D] text-white rounded-2xl lg:rounded-xl' : 'bg-white rounded-2xl lg:rounded-xl shadow-sm border border-[#17494D]/10'}>
                     <CardContent className="p-3 lg:p-4">
                       {message.type === 'assistant' ? (
                         <div
@@ -526,10 +526,10 @@ export default function ChatPage() {
                       
                       {message.type === 'assistant' && (
                         <div className="flex flex-wrap gap-2 mt-3">
-                          <Button size="sm" variant="outline" onClick={() => openEdit(message)} className="text-xs lg:text-sm">
+                          <Button size="sm" variant="outline" onClick={() => openEdit(message)} className="text-xs lg:text-sm border-[#4338CA] text-[#4338CA] hover:bg-[#4338CA]/10">
                             <Edit3 className="h-3 w-3 lg:h-4 lg:w-4 mr-1" /> Edit
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => downloadMessageAsPdf(message, user)} className="text-xs lg:text-sm">
+                          <Button size="sm" variant="outline" onClick={() => downloadMessageAsPdf(message, user)} className="text-xs lg:text-sm border-[#17494D] text-[#17494D] hover:bg-[#17494D]/10">
                             <Download className="h-3 w-3 lg:h-4 lg:w-4 mr-1" /> PDF
                           </Button>
                         </div>
@@ -543,7 +543,7 @@ export default function ChatPage() {
                 </div>
                 
                 {message.type === 'user' && (
-                  <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0 mt-1">
+                  <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-[#17494D] flex items-center justify-center flex-shrink-0 mt-1">
                     <User className="h-3 w-3 lg:h-4 lg:w-4 text-white" />
                   </div>
                 )}
@@ -552,13 +552,13 @@ export default function ChatPage() {
             
             {isLoading && (
               <div className="flex gap-2 lg:gap-4">
-                <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-blue-600 flex items-center justify-center mt-1">
+                <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-full bg-[#4338CA] flex items-center justify-center mt-1">
                   <Bot className="h-3 w-3 lg:h-4 lg:w-4 text-white" />
                 </div>
                 <Card className="bg-white rounded-2xl lg:rounded-xl">
                   <CardContent className="p-3 lg:p-4">
                     <div className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-3 w-3 lg:h-4 lg:w-4 border-b-2 border-blue-600"></div>
+                      <div className="animate-spin rounded-full h-3 w-3 lg:h-4 lg:w-4 border-b-2 border-[#4338CA]"></div>
                       <span className="text-sm lg:text-base">Generating quote...</span>
                     </div>
                   </CardContent>
@@ -588,13 +588,13 @@ export default function ChatPage() {
                   className="flex-1"
                 />
                 <div className="flex items-center gap-2">
-                  <Button onClick={handleSendMessage} disabled={isLoading}>
+                  <Button onClick={handleSendMessage} disabled={isLoading} className="bg-[#4338CA] hover:bg-[#362CA7]">
                     {isLoading ? 'Sending...' : <Send className="h-4 w-4" />}
                   </Button>
                   <Button
                     type="button"
                     variant={user?.role === 'premium' ? 'default' : 'outline'}
-                    className="flex items-center gap-2"
+                    className={`flex items-center gap-2 ${user?.role === 'premium' ? 'bg-[#17494D] hover:bg-[#12373A]' : 'border-[#4338CA] text-[#4338CA] hover:bg-[#4338CA]/10'}`}
                     disabled={user?.role !== 'premium'}
                     onClick={() => {
                       if (user?.role !== 'premium') {
@@ -656,7 +656,7 @@ export default function ChatPage() {
           <DialogContent className="max-w-3xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-blue-600" />
+                <Sparkles className="h-5 w-5 text-[#4BB3FD]" />
                 Prompt Booster
               </DialogTitle>
               <DialogDescription>
@@ -695,14 +695,14 @@ export default function ChatPage() {
                   </Button>
                 </form>
                 <div className="space-y-4">
-                  <div className="rounded-lg border bg-slate-50 p-4 text-sm leading-6 whitespace-pre-wrap font-mono min-h-[260px]">
+                  <div className="rounded-lg border border-[#17494D]/10 bg-[#F5F5F5] p-4 text-sm leading-6 whitespace-pre-wrap font-mono min-h-[260px] text-[#17494D]">
                     {promptResult || 'Generated prompt will appear here. Provide details and click generate.'}
                   </div>
                   {promptSuggestions.length > 0 && (
                     <div className="space-y-2">
                       <Separator />
-                      <h3 className="text-sm font-semibold text-slate-700">Suggested follow-ups</h3>
-                      <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
+                      <h3 className="text-sm font-semibold text-[#17494D]">Suggested follow-ups</h3>
+                      <ul className="list-disc list-inside text-sm text-[#17494D]/80 space-y-1">
                         {promptSuggestions.map((item, index) => (
                           <li key={index}>{item}</li>
                         ))}

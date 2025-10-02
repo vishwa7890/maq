@@ -256,15 +256,15 @@ except Exception as e:
     # Fallback to default prompt
     SYSTEM_PROMPT = """You are VilaiMathi AI, a conversational business assistant like ChatGPT, but specialized exclusively in business topics.
 
-**YOUR ROLE:**
+YOUR ROLE:
 Communicate naturally and helpfully about business matters - quotes, estimates, project planning, strategy, pricing, and commercial advice. Be conversational, clear, and professional.
 
-**BUSINESS-ONLY FOCUS:**
+BUSINESS-ONLY FOCUS:
 You ONLY handle business topics: project estimation, pricing, business strategy, technology recommendations, marketing, sales, operations, finance, CRM, ERP, software development, design services.
 
 If asked about non-business topics, politely redirect: "I specialize in business topics like quotes, pricing, and commercial advice. How can I help with your business needs?"
 
-**HOW TO RESPOND:**
+HOW TO RESPOND:
 
 For general business questions:
 - Answer naturally and conversationally (like ChatGPT)
@@ -281,37 +281,37 @@ For quotation requests:
 - Default currency: INR (₹)
 - Calculate totals accurately
 
-**EXAMPLE QUOTATION FORMAT:**
+EXAMPLE QUOTATION FORMAT:
 
-## Professional Quotation
+Professional Quotation
 
-**Quotation Details:**
+Quotation Details:
 - Number: QT-2025-001
 - Date: [Current Date]
 - Valid Until: [30 days]
 - Project: [Name]
 
-**Overview:** [Brief project description]
+Overview: [Brief project description]
 
-**Service Breakdown:**
+Service Breakdown:
 | Service Phase | Description | Deliverables | Cost (INR) | Timeline |
 |---------------|-------------|--------------|:----------:|:--------:|
 | Phase 1 | [Details] | [Items] | 25,000 | 2 weeks |
-| **Total** | | | **25,000** | **2 weeks** |
+| Total | | | 25,000 | 2 weeks |
 
-**Pricing Summary:**
+Pricing Summary:
 | Item | Amount (INR) |
 |------|:------------:|
 | Services | 25,000 |
 | GST (18%) | 4,500 |
-| **Grand Total** | **29,500** |
+| Grand Total | 29,500 |
 
-**Payment Terms:** 50% advance, 50% on completion
-**Timeline:** [Milestones]
-**Terms:** [Revision policy, IP rights, warranty]
-**Next Steps:** [How to proceed]
+Payment Terms: 50% advance, 50% on completion
+Timeline: [Milestones]
+Terms: [Revision policy, IP rights, warranty]
+Next Steps: [How to proceed]
 
-**DISCOUNT POLICY:**
+DISCOUNT POLICY:
 - 100+ hours: 5% discount
 - Repeat clients: 10% discount
 
@@ -1266,15 +1266,15 @@ async def uiux_estimate(project_details: Dict[str, Any]):
         
         # Format the project details into a professional quote
         quote_content = f"""
-## UI/UX Design Quote
+UI/UX Design Quote
 
-### Summary
+Summary
 - Client: {client_name}
 - Project: {project_name}
 - Date: {current_date}
 - Quote #: {quote_number}
 
-### Itemized Estimate
+Itemized Estimate
 | Item | Qty/Hours | Rate (₹) | Subtotal (₹) |
 |---|---:|---:|---:|
 | Research & Discovery | 40 | 2,000 | 80,000 |
@@ -1282,23 +1282,23 @@ async def uiux_estimate(project_details: Dict[str, Any]):
 | UI Design | 50 | 2,000 | 100,000 |
 | Prototyping | 30 | 2,000 | 60,000 |
 | Testing & Iteration | 30 | 2,000 | 60,000 |
-| | | **Subtotal** | **360,000** |
+| | | Subtotal | 360,000 |
 
-### Discounts
+Discounts
 - Standard 5% discount for projects over 100 hours: (₹18,000)
 
-### Totals
+Totals
 - Subtotal: ₹360,000
 - Discount: (₹18,000)
 - Grand Total: ₹342,000
 
-### Timeline and Payment Terms
+Timeline and Payment Terms
 - Timeline: 01 Sep 2025 – 30 Sep 2025 (4 weeks)
 - Quote Valid Until: {valid_until}
 - Payment Terms: 50% advance, 50% on completion
 - Hourly Rate: ₹2,000/hour
 
-### Next Steps
+Next Steps
 1. Review and approve this quotation
 2. Sign the NDA and service agreement
 3. Schedule project kickoff meeting
